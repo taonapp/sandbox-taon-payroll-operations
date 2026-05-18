@@ -1,0 +1,171 @@
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}
+
+.month-input {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  outline: none;
+  color-scheme: dark;
+}
+
+.month-input:focus {
+  border-color: var(--blue);
+}
+
+.btn {
+  padding: 8px 20px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--blue);
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  filter: brightness(1.15);
+}
+
+.btn-secondary {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  border-color: var(--blue);
+  color: var(--blue);
+}
+
+.btn-accent {
+  background: #dc2626;
+  color: white;
+}
+
+.btn-accent:hover:not(:disabled) {
+  filter: brightness(1.15);
+}
+
+.btn-email {
+  background: #16a34a;
+  color: white;
+}
+
+.btn-email:hover:not(:disabled) {
+  filter: brightness(1.15);
+}
+
+.card-sub {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.table-section {
+  margin-bottom: 32px;
+}
+
+.table-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.table-header h2 {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.result-count {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+thead th {
+  background: var(--surface);
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  font-size: 11px;
+  padding: 12px 16px;
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+}
+
+tbody td {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+tbody tr:hover {
+  background: var(--surface-hover);
+}
+
+tbody tr:last-child td {
+  border-bottom: none;
+}
+
+tfoot td {
+  padding: 12px 16px;
+  font-weight: 700;
+  background: var(--surface);
+  border-top: 2px solid var(--border);
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.badge-ativacao {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.badge-recorrencia {
+  background: var(--blue-soft);
+  color: var(--blue);
+}
+
+@media (max-width: 900px) {
+  .header-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+}

@@ -1,0 +1,44 @@
+name: Deploy Payroll Operations
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/deploy_key.pem
+          chmod 600 ~/.ssh/deploy_key.pem
+          ssh-keyscan -H ${{ secrets.EC2_IP }} >> ~/.ssh/known_hosts
+
+      - name: Sync files to EC2
+        run: |
+          rsync -avz -e "ssh -i ~/.ssh/deploy_key.pem" \
+            --exclude 'node_modules' \
+            --exclude '.env' \
+            --exclude '.github' \
+            ./ ec2-user@${{ secrets.EC2_IP }}:/home/ec2-user/payroll-operations/
+
+      - name: Install dependencies and restart
+        run: |
+          ssh -i ~/.ssh/deploy_key.pem ec2-user@${{ secrets.EC2_IP }} << 'ENDSSH'
+            cd /home/ec2-user/payroll-operations
+            npm install --production
+            chmod 600 .env 2>/dev/null || true
+            sudo systemctl restart taon-payroll-operations.service
+            sleep 3
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3004/payroll-ops/)
+            if [ "$STATUS" = "200" ]; then
+              echo "Payroll Operations rodando OK"
+            else
+              echo "Payroll Operations nao respondeu (HTTP $STATUS)"
+              sudo journalctl -u taon-payroll-operations.service --no-pager -n 30
+              exit 1
+            fi
+          ENDSSH

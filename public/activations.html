@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Novas Ativações - Payroll Ops</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="activations.css">
+  <link rel="stylesheet" href="refresh.css">
+</head>
+<body>
+  <div class="sidebar">
+    <div class="logo">Payroll Ops</div>
+    <nav>
+      <a href="/" class="nav-item">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        Dashboard
+      </a>
+      <a href="/users.html" class="nav-item">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Base Ativa
+      </a>
+      <a href="/activations.html" class="nav-item active">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
+        Novas Ativações
+      </a>
+      <a href="/partnerships.html" class="nav-item">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M12 22l4-4-4-4"/><path d="M12 14l-4-4 4-4"/><path d="M21 3l-7 7"/><path d="M3 3l7 7"/></svg>
+        Parcerias
+      </a>
+      <a href="/meli.html" class="nav-item">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        Ativacao Meli
+      </a>
+    </nav>
+  </div>
+
+  <main class="content">
+    <header class="page-header">
+      <h1>Novas Ativações</h1>
+      <div class="month-nav">
+        <button class="btn-nav" id="prevMonth">&larr;</button>
+        <span class="month-label" id="monthLabel"></span>
+        <button class="btn-nav" id="nextMonth">&rarr;</button>
+      </div>
+      <div id="refreshContainer"></div>
+    </header>
+
+    <!-- Seção Hoje -->
+    <section class="today-section hidden" id="todaySection">
+      <div class="today-header">
+        <h2 class="today-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          Ativações Hoje
+        </h2>
+        <span class="today-date" id="todayDate"></span>
+      </div>
+
+      <span class="loading" id="todayLoading">Carregando dados de hoje...</span>
+
+      <div id="todayContent" class="hidden">
+        <div class="cards-row" style="margin-bottom: 16px;">
+          <div class="card accent-blue">
+            <span class="card-label">Total Hoje</span>
+            <span class="card-value" id="todayCount">-</span>
+            <div class="card-breakdown">
+              <span><span class="dot dot-blue"></span> Titulares: <b id="todayTit">-</b></span>
+              <span><span class="dot dot-purple"></span> Dependentes: <b id="todayDep">-</b></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Nome</th>
+                  <th>CPF</th>
+                  <th>Codigo</th>
+                  <th>Tipo</th>
+                  <th>Valor</th>
+                  <th>Empresa</th>
+                </tr>
+              </thead>
+              <tbody id="todayBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div id="loading" class="loading">Carregando dados...</div>
+
+    <div id="page" class="hidden">
+      <!-- Summary cards -->
+      <section class="cards-row">
+        <div class="card accent-blue">
+          <span class="card-label">Total no Mês</span>
+          <span class="card-value" id="totalMes">-</span>
+          <div class="card-breakdown">
+            <span><span class="dot dot-blue"></span> Titulares: <b id="titMes">-</b></span>
+            <span><span class="dot dot-purple"></span> Dependentes: <b id="depMes">-</b></span>
+          </div>
+        </div>
+        <div class="card accent-green">
+          <span class="card-label">Média Diária</span>
+          <span class="card-value" id="mediaDia">-</span>
+        </div>
+        <div class="card accent-orange">
+          <span class="card-label">Melhor Dia</span>
+          <span class="card-value" id="melhorDiaVal">-</span>
+          <span class="card-sub" id="melhorDiaDate">-</span>
+        </div>
+      </section>
+
+      <!-- Chart -->
+      <section class="chart-section">
+        <div class="card">
+          <span class="card-label">Ativações por Dia</span>
+          <div class="chart-container" id="chart"></div>
+        </div>
+      </section>
+
+      <!-- Daily table -->
+      <section class="table-section">
+        <div class="card">
+          <span class="card-label">Detalhamento Diário</span>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Dia</th>
+                <th>Total</th>
+                <th>Titulares</th>
+                <th>Dependentes</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="tableBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Detail modal -->
+      <div class="modal-overlay hidden" id="modal">
+        <div class="modal">
+          <div class="modal-header">
+            <h2 id="modalTitle">Detalhes</h2>
+            <button class="btn-close" id="modalClose">&times;</button>
+          </div>
+          <div class="modal-body">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Nome</th>
+                  <th>CPF</th>
+                  <th>Codigo</th>
+                  <th>Tipo</th>
+                  <th>Valor</th>
+                  <th>Empresa</th>
+                </tr>
+              </thead>
+              <tbody id="modalBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="refresh.js"></script>
+  <script src="activations.js"></script>
+</body>
+</html>
