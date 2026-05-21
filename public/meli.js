@@ -13,6 +13,12 @@ function formatDate(d) {
   return new Date(d).toLocaleDateString('pt-BR');
 }
 
+function formatDateTime(d) {
+  if (!d) return '-';
+  const dt = new Date(d);
+  return dt.toLocaleDateString('pt-BR') + ' ' + dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+}
+
 function formatDay(dateStr) {
   const d = new Date(dateStr + 'T12:00:00');
   return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
@@ -30,9 +36,9 @@ async function loadAll() {
 
   try {
     const [summaryRes, timelineRes, usersRes] = await Promise.all([
-      fetch('/api/meli/summary'),
-      fetch('/api/meli/timeline'),
-      fetch('/api/meli/users'),
+      fetch('/payroll-ops/api/meli/summary'),
+      fetch('/payroll-ops/api/meli/timeline'),
+      fetch('/payroll-ops/api/meli/users'),
     ]);
 
     if (!summaryRes.ok || !timelineRes.ok || !usersRes.ok) throw new Error('API error');
@@ -79,21 +85,40 @@ function renderSummary(s) {
   $('receitaTotal').textContent = formatCurrency(s.receitaTotal);
   $('ticketMedio').textContent = formatCurrency(s.ticketMedio);
 
-  const taxa = totalCad > 0 ? ((totalAssinatura / totalCad) * 100).toFixed(1) : '0.0';
-  $('taxaConversao').textContent = taxa + '%';
-
   $('totalChips').textContent = (Number(s.totalChips) || 0).toLocaleString('pt-BR');
+  $('chipsFisicos').textContent = (Number(s.chipsFisicos) || 0).toLocaleString('pt-BR');
+  $('chipsEsim').textContent = (Number(s.chipsEsim) || 0).toLocaleString('pt-BR');
+  const totalChips = Number(s.totalChips) || 0;
+  const chipsApn = Number(s.chipsApn) || 0;
+  $('chipsApn').textContent = chipsApn.toLocaleString('pt-BR');
+  $('apnPct').textContent = totalChips > 0 ? ((chipsApn / totalChips) * 100).toFixed(1) + '% dos chips' : '';
 }
 
 const PIE_COLORS = ['#3b82f6', '#a855f7', '#22c55e', '#f59e0b', '#ef4444', '#06b6d4', '#ec4899', '#84cc16'];
 
 const tooltip = $('tooltip');
 
+function positionTooltip(e) {
+  const rect = tooltip.getBoundingClientRect();
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+
+  let left = e.clientX + 12;
+  let top = e.clientY - 8;
+
+  if (left + rect.width > vw) left = e.clientX - rect.width - 12;
+  if (top + rect.height > vh) top = e.clientY - rect.height - 8;
+  if (left < 0) left = 4;
+  if (top < 0) top = 4;
+
+  tooltip.style.left = left + 'px';
+  tooltip.style.top = top + 'px';
+}
+
 function showTooltip(e, html) {
   tooltip.innerHTML = html;
   tooltip.classList.remove('hidden');
-  tooltip.style.left = (e.clientX + 12) + 'px';
-  tooltip.style.top = (e.clientY - 8) + 'px';
+  positionTooltip(e);
 }
 
 function hideTooltip() {
@@ -101,8 +126,7 @@ function hideTooltip() {
 }
 
 function moveTooltip(e) {
-  tooltip.style.left = (e.clientX + 12) + 'px';
-  tooltip.style.top = (e.clientY - 8) + 'px';
+  positionTooltip(e);
 }
 
 function renderPieChart(users) {
@@ -273,9 +297,8 @@ function renderTable() {
     if (currentFilter !== 'all' && u.tipo !== currentFilter) return false;
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
-      const match = (u.name || '').toLowerCase().includes(term)
-        || (u.cpf || '').includes(term)
-        || String(u.idUser).includes(term);
+      const match = String(u.idUser).includes(term)
+        || String(u.idMotorista || '').toLowerCase().includes(term);
       if (!match) return false;
     }
     return true;
@@ -284,7 +307,7 @@ function renderTable() {
   $('resultCount').textContent = `${filtered.length} resultado${filtered.length !== 1 ? 's' : ''}`;
 
   if (filtered.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;color:var(--text-muted)">Nenhum usuario encontrado</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--text-muted)">Nenhum usuario encontrado</td></tr>';
     return;
   }
 
@@ -295,8 +318,6 @@ function renderTable() {
 
     tr.innerHTML = `
       <td>${u.idUser}</td>
-      <td>${u.name || '-'}</td>
-      <td>${u.cpf || '-'}</td>
       <td>${u.idMotorista || '-'}</td>
       <td><span style="color:${u.tipo === 'Titular' ? 'var(--blue)' : 'var(--purple)'}">${u.tipo}</span></td>
       <td><span style="color:${statusColor}">${u.status || '-'}</span></td>
@@ -324,6 +345,146 @@ document.querySelectorAll('.filter-btn').forEach(btn => {
     currentFilter = btn.dataset.filter;
     renderTable();
   });
+});
+
+// Modal Chips
+$('cardChips').addEventListener('click', async () => {
+  const modal = $('chipsModal');
+  const tbody = $('chipsTableBody');
+  tbody.innerHTML = '<tr><td colspan="14" style="text-align:center;color:var(--text-muted)">Carregando...</td></tr>';
+  modal.classList.remove('hidden');
+
+  try {
+    const res = await fetch('/payroll-ops/api/meli/chips');
+    if (!res.ok) throw new Error('API error');
+    const rows = await res.json();
+
+    if (rows.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="14" style="text-align:center;color:var(--text-muted)">Nenhum chip encontrado</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = '';
+    rows.forEach(r => {
+      const tr = document.createElement('tr');
+      const apnStyle = r.primeiraApn ? 'color:var(--green)' : 'color:var(--text-muted)';
+      tr.innerHTML = `
+        <td>${r.idUser}</td>
+        <td>${r.imsi || '-'}</td>
+        <td>${r.iccid || '-'}</td>
+        <td>${r.tipoChip || '-'}</td>
+        <td>${r.statusChip || '-'}</td>
+        <td>${formatDateTime(r.dataAssociacao)}</td>
+        <td style="${apnStyle}">${formatDateTime(r.primeiraApn)}</td>
+        <td style="${apnStyle}">${formatDateTime(r.ultimaApn)}</td>
+        <td>${r.totalSessoes || 0}</td>
+        <td>${r.ipUser || '-'}</td>
+        <td>${formatDateTime(r.ipUserDate)}</td>
+        <td>${r.ipTemp || '-'}</td>
+        <td>${r.ipTempStatus || '-'}</td>
+        <td>${formatDateTime(r.ipTempDate)}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  } catch (err) {
+    tbody.innerHTML = '<tr><td colspan="14" style="text-align:center;color:var(--text-muted)">Erro ao carregar dados</td></tr>';
+    console.error(err);
+  }
+});
+
+$('chipsModalClose').addEventListener('click', () => {
+  $('chipsModal').classList.add('hidden');
+});
+
+$('chipsModal').addEventListener('click', (e) => {
+  if (e.target === $('chipsModal')) $('chipsModal').classList.add('hidden');
+});
+
+// Modal APN
+let naoApnData = [];
+
+$('cardApn').addEventListener('click', async () => {
+  const modal = $('apnModal');
+  const tbody = $('apnTableBody');
+  const tbodyNao = $('naoApnTableBody');
+  tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted)">Carregando...</td></tr>';
+  tbodyNao.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted)">Carregando...</td></tr>';
+  modal.classList.remove('hidden');
+
+  try {
+    const [apnRes, naoRes] = await Promise.all([
+      fetch('/payroll-ops/api/meli/apn'),
+      fetch('/payroll-ops/api/meli/nao-apn'),
+    ]);
+    if (!apnRes.ok || !naoRes.ok) throw new Error('API error');
+
+    const rows = await apnRes.json();
+    naoApnData = await naoRes.json();
+
+    if (rows.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted)">Nenhum chip bateu na APN</td></tr>';
+    } else {
+      tbody.innerHTML = '';
+      rows.forEach(r => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${r.idUser}</td>
+          <td>${r.imsi || '-'}</td>
+          <td>${r.ipUser || '-'}</td>
+          <td>${formatDateTime(r.ipUserDate)}</td>
+          <td>${r.ipTemp || '-'}</td>
+          <td>${r.ipTempStatus || '-'}</td>
+          <td>${formatDateTime(r.ipTempDate)}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    if (naoApnData.length === 0) {
+      tbodyNao.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted)">Todos os chips bateram na APN</td></tr>';
+    } else {
+      tbodyNao.innerHTML = '';
+      naoApnData.forEach(r => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${r.idUser}</td>
+          <td>${r.imsi || '-'}</td>
+          <td>${r.iccid || '-'}</td>
+          <td>${r.tipoChip || '-'}</td>
+          <td>${r.statusChip || '-'}</td>
+        `;
+        tbodyNao.appendChild(tr);
+      });
+    }
+  } catch (err) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted)">Erro ao carregar dados</td></tr>';
+    tbodyNao.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted)">Erro ao carregar dados</td></tr>';
+    console.error(err);
+  }
+});
+
+$('exportNaoApnCsv').addEventListener('click', () => {
+  if (naoApnData.length === 0) return;
+  const header = 'ID,IMSI,ICCID,Tipo,Status';
+  const lines = naoApnData.map(r =>
+    [r.idUser, r.imsi || '', r.iccid || '', r.tipoChip || '', r.statusChip || ''].join(',')
+  );
+  const csv = [header, ...lines].join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'chips_nao_bateram_apn.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+$('apnModalClose').addEventListener('click', () => {
+  $('apnModal').classList.add('hidden');
+});
+
+$('apnModal').addEventListener('click', (e) => {
+  if (e.target === $('apnModal')) $('apnModal').classList.add('hidden');
 });
 
 loadAll();

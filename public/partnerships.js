@@ -60,7 +60,7 @@ async function loadData() {
   btnEmail.disabled = true;
 
   try {
-    const res = await fetch(`/api/partnerships?month=${month}`);
+    const res = await fetch(`/payroll-ops/api/partnerships?month=${month}`);
     if (!res.ok) throw new Error('Erro na consulta');
     const data = await res.json();
     currentData = data;

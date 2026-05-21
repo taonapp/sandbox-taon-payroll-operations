@@ -22,6 +22,7 @@ jobs:
           rsync -avz -e "ssh -i ~/.ssh/deploy_key.pem" \
             --exclude 'node_modules' \
             --exclude '.env' \
+            --exclude '.git' \
             --exclude '.github' \
             ./ ec2-user@${{ secrets.EC2_IP }}:/home/ec2-user/payroll-operations/
 
@@ -33,7 +34,7 @@ jobs:
             chmod 600 .env 2>/dev/null || true
             sudo systemctl restart taon-payroll-operations.service
             sleep 3
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3004/payroll-ops/)
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3004/)
             if [ "$STATUS" = "200" ]; then
               echo "Payroll Operations rodando OK"
             else

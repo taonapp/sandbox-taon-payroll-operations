@@ -639,7 +639,10 @@ apiRouter.get('/api/meli/summary', async (req, res) => {
         SUM(CASE WHEN tipo = 'Dependente' THEN 1 ELSE 0 END) AS dependentesAssinatura,
         COALESCE(SUM(amount), 0) AS receitaTotal,
         ROUND(COALESCE(AVG(amount), 0), 2) AS ticketMedio,
-        (SELECT COUNT(*) FROM SimCards sc INNER JOIN user_data ud2 ON ud2.idUser = sc.idUser) AS totalChips
+        (SELECT COUNT(*) FROM SimCards sc INNER JOIN user_data ud2 ON ud2.idUser = sc.idUser) AS totalChips,
+        (SELECT COUNT(*) FROM SimCards sc INNER JOIN user_data ud2 ON ud2.idUser = sc.idUser WHERE sc.type = 'fisico') AS chipsFisicos,
+        (SELECT COUNT(*) FROM SimCards sc INNER JOIN user_data ud2 ON ud2.idUser = sc.idUser WHERE sc.type = 'e-sim') AS chipsEsim,
+        (SELECT COUNT(DISTINCT sc2.imsi) FROM SimCards sc2 INNER JOIN user_data ud3 ON ud3.idUser = sc2.idUser WHERE EXISTS (SELECT 1 FROM IPsUsers ip WHERE ip.imsi = sc2.imsi) OR EXISTS (SELECT 1 FROM IPsIMSIsTemp ipt WHERE ipt.imsi = sc2.imsi)) AS chipsApn
       FROM with_subscription
       WHERE rn = 1
     `);
@@ -648,6 +651,132 @@ apiRouter.get('/api/meli/summary', async (req, res) => {
   } catch (err) {
     console.error('Meli summary error:', err);
     res.status(500).json({ error: 'Erro ao consultar métricas Meli' });
+  }
+});
+
+// Chips que bateram na APN (detalhamento)
+apiRouter.get('/api/meli/apn', async (req, res) => {
+  try {
+    const [rows] = await pool.query(`
+      WITH meli_users AS (
+        SELECT DISTINCT mc.idUser
+        FROM MgmChain mc
+        WHERE mc.mgmInvCode = 'MELI26'
+          AND mc.nivel = 1
+      )
+      SELECT
+        u.id AS idUser,
+        sc.imsi,
+        ipu.ipUser,
+        DATE_FORMAT(DATE_SUB(ipu.ipUserDate, INTERVAL 3 HOUR), '%Y-%m-%dT%H:%i:%s') AS ipUserDate,
+        ipt.ipTemp,
+        ipt.ipTempStatus,
+        DATE_FORMAT(DATE_SUB(ipt.ipTempDate, INTERVAL 3 HOUR), '%Y-%m-%dT%H:%i:%s') AS ipTempDate
+      FROM meli_users mu
+      INNER JOIN Users u ON u.id = mu.idUser
+      INNER JOIN SimCards sc ON sc.idUser = u.id
+      LEFT JOIN (
+        SELECT i1.imsi, i1.IPv4Suffix AS ipUser, i1.cdate AS ipUserDate
+        FROM IPsUsers i1
+        INNER JOIN (SELECT imsi, MAX(id) AS maxId FROM IPsUsers GROUP BY imsi) i2 ON i1.id = i2.maxId
+      ) ipu ON ipu.imsi = sc.imsi
+      LEFT JOIN (
+        SELECT i1.imsi, i1.IPv4Suffix AS ipTemp, i1.status AS ipTempStatus, i1.cdate AS ipTempDate
+        FROM IPsIMSIsTemp i1
+        INNER JOIN (SELECT imsi, MAX(id) AS maxId FROM IPsIMSIsTemp GROUP BY imsi) i2 ON i1.id = i2.maxId
+      ) ipt ON ipt.imsi = sc.imsi
+      WHERE u.internalUser = 0
+        AND (ipu.imsi IS NOT NULL OR ipt.imsi IS NOT NULL)
+      ORDER BY GREATEST(COALESCE(ipu.ipUserDate, '1970-01-01'), COALESCE(ipt.ipTempDate, '1970-01-01')) DESC
+    `);
+    res.json(rows);
+  } catch (err) {
+    console.error('Meli APN error:', err);
+    res.status(500).json({ error: 'Erro ao consultar dados APN' });
+  }
+});
+
+// Chips que NAO bateram na APN
+apiRouter.get('/api/meli/nao-apn', async (req, res) => {
+  try {
+    const [rows] = await pool.query(`
+      WITH meli_users AS (
+        SELECT DISTINCT mc.idUser
+        FROM MgmChain mc
+        WHERE mc.mgmInvCode = 'MELI26'
+          AND mc.nivel = 1
+      )
+      SELECT
+        u.id AS idUser,
+        sc.imsi,
+        sc.iccid,
+        sc.type AS tipoChip,
+        CASE sc.idStatus WHEN 1 THEN 'Ativo' WHEN 2 THEN 'Inativo' ELSE CONCAT('Status ', sc.idStatus) END AS statusChip
+      FROM meli_users mu
+      INNER JOIN Users u ON u.id = mu.idUser
+      INNER JOIN SimCards sc ON sc.idUser = u.id
+      WHERE u.internalUser = 0
+        AND NOT EXISTS (SELECT 1 FROM IPsUsers ip WHERE ip.imsi = sc.imsi)
+        AND NOT EXISTS (SELECT 1 FROM IPsIMSIsTemp ipt WHERE ipt.imsi = sc.imsi)
+      ORDER BY u.id, sc.imsi
+    `);
+    res.json(rows);
+  } catch (err) {
+    console.error('Meli nao-apn error:', err);
+    res.status(500).json({ error: 'Erro ao consultar chips sem APN' });
+  }
+});
+
+// Todos os chips associados (com info APN)
+apiRouter.get('/api/meli/chips', async (req, res) => {
+  try {
+    const [rows] = await pool.query(`
+      WITH meli_users AS (
+        SELECT DISTINCT mc.idUser
+        FROM MgmChain mc
+        WHERE mc.mgmInvCode = 'MELI26'
+          AND mc.nivel = 1
+      )
+      SELECT
+        u.id AS idUser,
+        sc.imsi,
+        sc.iccid,
+        sc.type AS tipoChip,
+        CASE sc.idStatus WHEN 1 THEN 'Ativo' WHEN 2 THEN 'Inativo' ELSE CONCAT('Status ', sc.idStatus) END AS statusChip,
+        DATE_FORMAT(DATE_SUB(sc.cdate, INTERVAL 3 HOUR), '%Y-%m-%dT%H:%i:%s') AS dataAssociacao,
+        DATE_FORMAT(DATE_SUB(apn.primeiraApn, INTERVAL 3 HOUR), '%Y-%m-%dT%H:%i:%s') AS primeiraApn,
+        DATE_FORMAT(DATE_SUB(apn.ultimaApn, INTERVAL 3 HOUR), '%Y-%m-%dT%H:%i:%s') AS ultimaApn,
+        apn.totalSessoes,
+        ipu.IPv4Suffix AS ipUser,
+        DATE_FORMAT(DATE_SUB(ipu.cdate, INTERVAL 3 HOUR), '%Y-%m-%dT%H:%i:%s') AS ipUserDate,
+        ipt.IPv4Suffix AS ipTemp,
+        ipt.status AS ipTempStatus,
+        DATE_FORMAT(DATE_SUB(ipt.cdate, INTERVAL 3 HOUR), '%Y-%m-%dT%H:%i:%s') AS ipTempDate
+      FROM meli_users mu
+      INNER JOIN Users u ON u.id = mu.idUser
+      INNER JOIN SimCards sc ON sc.idUser = u.id
+      LEFT JOIN (
+        SELECT dss.imsi, MIN(dss.cdate) AS primeiraApn, MAX(dss.cdate) AS ultimaApn, COUNT(*) AS totalSessoes
+        FROM DataServicesSessions dss
+        GROUP BY dss.imsi
+      ) apn ON apn.imsi = sc.imsi
+      LEFT JOIN (
+        SELECT i1.imsi, i1.IPv4Suffix, i1.cdate
+        FROM IPsUsers i1
+        INNER JOIN (SELECT imsi, MAX(id) AS maxId FROM IPsUsers GROUP BY imsi) i2 ON i1.id = i2.maxId
+      ) ipu ON ipu.imsi = sc.imsi
+      LEFT JOIN (
+        SELECT i1.imsi, i1.IPv4Suffix, i1.status, i1.cdate
+        FROM IPsIMSIsTemp i1
+        INNER JOIN (SELECT imsi, MAX(id) AS maxId FROM IPsIMSIsTemp GROUP BY imsi) i2 ON i1.id = i2.maxId
+      ) ipt ON ipt.imsi = sc.imsi
+      WHERE u.internalUser = 0
+      ORDER BY u.id, sc.imsi
+    `);
+    res.json(rows);
+  } catch (err) {
+    console.error('Meli chips error:', err);
+    res.status(500).json({ error: 'Erro ao consultar chips' });
   }
 });
 
@@ -721,8 +850,6 @@ apiRouter.get('/api/meli/users', async (req, res) => {
       )
       SELECT
         u.id AS idUser,
-        u.name,
-        u.cpf,
         u.cdate AS dataCadastro,
         u.status,
         CASE WHEN u.idUserParent IS NULL THEN 'Titular' ELSE 'Dependente' END AS tipo,
@@ -742,7 +869,7 @@ apiRouter.get('/api/meli/users', async (req, res) => {
       LEFT JOIN UsersMetadata um ON um.idUser = u.id AND um.name = 'identifier'
       LEFT JOIN SimCards sc ON sc.idUser = u.id
       WHERE u.internalUser = 0
-      GROUP BY u.id, u.name, u.cpf, u.cdate, u.status, u.idUserParent,
+      GROUP BY u.id, u.cdate, u.status, u.idUserParent,
         lr.amount, lr.paymentMethod, lr.statusRecorrencia, lr.productName,
         c.companyName, um.value
       ORDER BY u.cdate DESC

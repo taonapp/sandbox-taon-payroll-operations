@@ -71,7 +71,7 @@ function renderView(d) {
 async function loadDashboard() {
   const isFirstLoad = !dashData;
   try {
-    const res = await fetch('/api/dashboard');
+    const res = await fetch('/payroll-ops/api/dashboard');
     if (!res.ok) throw new Error('Erro na API');
     dashData = await res.json();
 

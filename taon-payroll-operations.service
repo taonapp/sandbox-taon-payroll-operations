@@ -1,0 +1,17 @@
+[Unit]
+Description=TaOn Payroll Operations (Node.js, port 3004)
+After=network.target
+
+[Service]
+Type=simple
+User=ec2-user
+Group=ec2-user
+WorkingDirectory=/home/ec2-user/payroll-operations
+ExecStart=/bin/bash -c 'set -a; [ -f .env ] && source .env; set +a; exec node server.js'
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

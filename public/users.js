@@ -25,7 +25,7 @@ async function loadUsers() {
   }
 
   try {
-    const res = await fetch(`/api/users?view=${currentView}`);
+    const res = await fetch(`/payroll-ops/api/users?view=${currentView}`);
     if (!res.ok) throw new Error('Erro na API');
     allUsers = await res.json();
     renderTable();

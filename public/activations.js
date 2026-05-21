@@ -80,7 +80,7 @@ async function loadToday() {
   }
 
   try {
-    const res = await fetch(`/api/activations/details?date=${today}`);
+    const res = await fetch(`/payroll-ops/api/activations/details?date=${today}`);
     if (!res.ok) throw new Error('Erro');
     const rows = await res.json();
 
@@ -139,7 +139,7 @@ async function loadMonth() {
   }
 
   try {
-    const res = await fetch(`/api/activations?month=${monthKey()}`);
+    const res = await fetch(`/payroll-ops/api/activations?month=${monthKey()}`);
     if (!res.ok) throw new Error('Erro na API');
     const data = await res.json();
 
@@ -235,7 +235,7 @@ async function showDetails(date) {
   $('modal').classList.remove('hidden');
 
   try {
-    const res = await fetch(`/api/activations/details?date=${date}`);
+    const res = await fetch(`/payroll-ops/api/activations/details?date=${date}`);
     if (!res.ok) throw new Error('Erro');
     const rows = await res.json();
 
