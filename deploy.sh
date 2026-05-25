@@ -7,12 +7,14 @@ REMOTE_DIR="/home/ec2-user/payroll-operations"
 
 echo "=> Deploying payroll-operations to $EC2_IP ..."
 
-rsync -avz -e "ssh -i $KEY" \
-  --exclude 'node_modules' \
-  --exclude '.env' \
-  --exclude '.git' \
-  --exclude '.github' \
-  ./ ec2-user@"$EC2_IP":"$REMOTE_DIR"/
+# Create tar excluding unwanted dirs, upload and extract on server
+tar cf - \
+  --exclude='node_modules' \
+  --exclude='.env' \
+  --exclude='.git' \
+  --exclude='.github' \
+  --exclude='.claude' \
+  . | ssh -i "$KEY" ec2-user@"$EC2_IP" "mkdir -p $REMOTE_DIR && cd $REMOTE_DIR && tar xf -"
 
 ssh -i "$KEY" ec2-user@"$EC2_IP" << 'ENDSSH'
   cd /home/ec2-user/payroll-operations

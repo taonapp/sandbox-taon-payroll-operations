@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const mysql = require('mysql2/promise');
 const path = require('path');
+const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3004;
@@ -17,6 +18,24 @@ const pool = mysql.createPool({
   queueLimit: 0,
 });
 
+// Parse Meli CSV (Base_TaOn)
+const meliCsvMap = new Map();
+try {
+  const csvPath = path.join(process.env.USERPROFILE || process.env.HOME, 'Downloads', 'Base_TaOn_202605.csv');
+  const lines = fs.readFileSync(csvPath, 'utf-8').trim().split('\n');
+  for (let i = 1; i < lines.length; i++) {
+    const [driverId, levelNum, levelName, movement] = lines[i].split(',');
+    meliCsvMap.set(driverId.trim(), {
+      csvLevelNum: Number(levelNum),
+      csvLevelName: levelName.trim(),
+      csvMovement: movement.trim(),
+    });
+  }
+  console.log(`Meli CSV loaded: ${meliCsvMap.size} drivers`);
+} catch (err) {
+  console.warn('Could not load Meli CSV:', err.message);
+}
+
 const PREFIX = '/payroll-ops';
 const apiRouter = express.Router();
 
@@ -27,7 +46,7 @@ app.use(PREFIX, express.static(path.join(__dirname, 'public')));
 // Redirect prefix root to index
 app.get(PREFIX, (req, res) => res.redirect(`${PREFIX}/`));
 
-function buildDashboardQuery(cutoffFilter) {
+function buildDashboardQuery(cutoffFilter, { requireSimCard = true } = {}) {
   return `
     WITH base_payroll AS (
         SELECT DISTINCT rpc.idUser
@@ -152,12 +171,12 @@ function buildDashboardQuery(cutoffFilter) {
                     )
                 )
               )
-          AND EXISTS (
+          ${requireSimCard ? `AND EXISTS (
                 SELECT 1
                 FROM SimCards sc
                 WHERE sc.idUser = b.idUser
                   AND sc.idStatus NOT IN (22,3,18,8,9,14)
-            )
+            )` : ''}
     )
     SELECT
         COUNT(*) AS totalLinhas,
@@ -177,22 +196,181 @@ apiRouter.get('/api/dashboard', async (req, res) => {
   try {
     const cutoff = "AND u.cdate < DATE_ADD(DATE_FORMAT(CURDATE(), '%Y-%m-20'), INTERVAL 1 DAY)";
 
-    const [[cobranca], [total]] = await Promise.all([
+    const [[cobranca], [total], [todos]] = await Promise.all([
       pool.query(buildDashboardQuery(cutoff)),
       pool.query(buildDashboardQuery('')),
+      pool.query(buildDashboardQuery('', { requireSimCard: false })),
     ]);
 
-    res.json({ cobranca: cobranca[0], total: total[0] });
+    res.json({ cobranca: cobranca[0], total: total[0], todos: todos[0] });
   } catch (err) {
     console.error('Dashboard query error:', err);
     res.status(500).json({ error: 'Erro ao consultar dados do dashboard' });
   }
 });
 
+// Cobrança agrupada por pagador (idUserPayer)
+apiRouter.get('/api/users/payers', async (req, res) => {
+  try {
+    const view = req.query.view || 'cobranca';
+    const cutoffFilter = view === 'cobranca'
+      ? "AND u.cdate < DATE_ADD(DATE_FORMAT(CURDATE(), '%Y-%m-20'), INTERVAL 1 DAY)"
+      : '';
+
+    const [rows] = await pool.query(`
+      WITH base_payroll AS (
+          SELECT DISTINCT rpc.idUser
+          FROM RecurringPurchasesConfig rpc
+          LEFT JOIN Users u ON u.id = rpc.idUser
+          LEFT JOIN Products p ON p.id = rpc.idProduct
+          WHERE rpc.paymentMethod = 'payroll'
+            AND rpc.idStatus = 1
+            AND u.status = 'enabled'
+            AND u.internalUser = 0
+            AND p.\`type\` = 'main'
+            ${cutoffFilter}
+      ),
+      recurring_main AS (
+          SELECT *
+          FROM (
+              SELECT
+                  rpc.idProduct,
+                  rpc.idUser,
+                  rpc.idUserPayer,
+                  rpc.amount,
+                  rpc.paymentMethod,
+                  rpc.idCompany,
+                  rpc.cdate,
+                  ROW_NUMBER() OVER (
+                      PARTITION BY rpc.idUser
+                      ORDER BY rpc.cdate DESC
+                  ) AS rn
+              FROM RecurringPurchasesConfig rpc
+              LEFT JOIN Products p ON p.id = rpc.idProduct
+              WHERE p.\`type\` LIKE 'main%'
+                AND rpc.idStatus = 1
+                AND rpc.paymentMethod = 'payroll'
+          ) x
+          WHERE rn = 1
+      ),
+      first_purchase AS (
+          SELECT *
+          FROM (
+              SELECT
+                  pp.idUser,
+                  pp.dateStart,
+                  ROW_NUMBER() OVER (
+                      PARTITION BY pp.idUser
+                      ORDER BY pp.dateStart ASC
+                  ) AS rn
+              FROM PurchasedProducts pp
+              LEFT JOIN Products p ON p.id = pp.idProduct
+              WHERE pp.status = 'succeeded'
+                AND p.\`type\` LIKE 'main%'
+          ) x
+          WHERE rn = 1
+      ),
+      max_date_end AS (
+          SELECT
+              pp.idUser,
+              MAX(pp.dateEnd) AS maxDateEnd
+          FROM PurchasedProducts pp
+          INNER JOIN Products p ON p.id = pp.idProduct
+          WHERE pp.status = 'succeeded'
+            AND (
+                  p.\`type\` LIKE 'main%'
+               OR p.\`type\` LIKE 'sponsor%'
+            )
+          GROUP BY pp.idUser
+      ),
+      periodo_atual AS (
+          SELECT
+              CASE
+                  WHEN DAY(NOW()) > 7 THEN
+                      TIMESTAMP(DATE_FORMAT(NOW(), '%Y-%m-07'), '00:00:00')
+                  ELSE
+                      TIMESTAMP(
+                          DATE_FORMAT(DATE_SUB(NOW(), INTERVAL 1 MONTH), '%Y-%m-07'),
+                          '00:00:00'
+                      )
+              END AS dia_7_anterior,
+              CASE
+                  WHEN DAY(NOW()) <= 7 THEN
+                      TIMESTAMP(DATE_FORMAT(NOW(), '%Y-%m-07'), '00:00:00')
+                  ELSE
+                      TIMESTAMP(
+                          DATE_FORMAT(DATE_ADD(NOW(), INTERVAL 1 MONTH), '%Y-%m-07'),
+                          '00:00:00'
+                      )
+              END AS proximo_dia_7
+      ),
+      base_final AS (
+          SELECT
+              rm.idUserPayer,
+              CASE
+                  WHEN fp.dateStart IS NULL THEN 0
+                  WHEN
+                      DATEDIFF(pa.proximo_dia_7, DATE(fp.dateStart)) + 1
+                      >= DATEDIFF(pa.proximo_dia_7, pa.dia_7_anterior)
+                  THEN rm.amount
+                  ELSE
+                      ROUND(
+                          rm.amount
+                          * (DATEDIFF(pa.proximo_dia_7, DATE(fp.dateStart)) + 1)
+                          / NULLIF(DATEDIFF(pa.proximo_dia_7, pa.dia_7_anterior), 0),
+                          2
+                      )
+              END AS valorProporcional
+          FROM base_payroll b
+          LEFT JOIN Users u ON u.id = b.idUser
+          LEFT JOIN recurring_main rm ON rm.idUser = b.idUser
+          LEFT JOIN first_purchase fp ON fp.idUser = b.idUser
+          LEFT JOIN max_date_end mde ON mde.idUser = b.idUser
+          CROSS JOIN periodo_atual pa
+          WHERE u.internalUser = 0
+            AND u.status = 'enabled'
+            AND (
+                  u.idUserParent IS NOT NULL
+                  OR (
+                      u.idUserParent IS NULL
+                      AND mde.maxDateEnd <= TIMESTAMP(
+                          DATE_FORMAT(DATE_ADD(CURDATE(), INTERVAL 1 MONTH), '%Y-%m-07'),
+                          '03:00:00'
+                      )
+                  )
+                )
+            AND EXISTS (
+                  SELECT 1
+                  FROM SimCards sc
+                  WHERE sc.idUser = b.idUser
+                    AND sc.idStatus NOT IN (22,3,18,8,9,14)
+              )
+      )
+      SELECT
+          u.id AS idUser,
+          u.name,
+          u.cpf,
+          SUM(bf.valorProporcional) AS valorTotalFolha,
+          COUNT(*) AS totalLinhas
+      FROM base_final bf
+      LEFT JOIN Users u ON u.id = bf.idUserPayer
+      GROUP BY bf.idUserPayer
+      ORDER BY COUNT(*) DESC
+    `);
+
+    res.json(rows);
+  } catch (err) {
+    console.error('Payers query error:', err);
+    res.status(500).json({ error: 'Erro ao consultar dados por pagador' });
+  }
+});
+
 // Lista completa de usuários na base de cobrança
 apiRouter.get('/api/users', async (req, res) => {
   try {
-    const cutoffFilter = req.query.view === 'total'
+    const view = req.query.view || 'cobranca';
+    const isTodos = view === 'todos';
+    const cutoffFilter = view === 'total' || isTodos
       ? ''
       : "AND u.cdate < DATE_ADD(DATE_FORMAT(CURDATE(), '%Y-%m-20'), INTERVAL 1 DAY)";
 
@@ -341,7 +519,14 @@ apiRouter.get('/api/users', async (req, res) => {
           COALESCE(
               (SELECT sc.id FROM SimCards sc WHERE sc.idUser = b.idUser AND sc.idStatus NOT IN (22,3,18,8,9,14) LIMIT 1),
               NULL
-          ) AS idSimCard
+          ) AS idSimCard,
+          CASE
+              WHEN EXISTS (SELECT 1 FROM SimCards sc WHERE sc.idUser = b.idUser AND sc.idStatus NOT IN (22,3,18,8,9,14))
+                  THEN 'Sim'
+              WHEN EXISTS (SELECT 1 FROM SimCards sc WHERE sc.idUser = b.idUser)
+                  THEN 'Inativo'
+              ELSE 'Sem chip'
+          END AS statusSimCard
       FROM base_payroll b
       LEFT JOIN Users u ON u.id = b.idUser
       LEFT JOIN recurring_main rm ON rm.idUser = b.idUser
@@ -362,12 +547,12 @@ apiRouter.get('/api/users', async (req, res) => {
                   )
               )
             )
-        AND EXISTS (
+        ${isTodos ? '' : `AND EXISTS (
               SELECT 1
               FROM SimCards sc
               WHERE sc.idUser = b.idUser
                 AND sc.idStatus NOT IN (22,3,18,8,9,14)
-            )
+            )`}
       ORDER BY u.cdate DESC
     `);
 
@@ -810,9 +995,10 @@ apiRouter.get('/api/meli/timeline', async (req, res) => {
       INNER JOIN Users u ON u.id = mu.idUser
       LEFT JOIN latest_rpc lr ON lr.idUser = u.id
       WHERE u.internalUser = 0
+        ${req.query.month ? "AND DATE_FORMAT(u.cdate, '%Y-%m') = ?" : ''}
       GROUP BY DATE_FORMAT(u.cdate, '%Y-%m-%d'), COALESCE(lr.productName, 'Sem plano')
       ORDER BY dia ASC, plano ASC
-    `);
+    `, req.query.month ? [req.query.month] : []);
 
     res.json(rows);
   } catch (err) {
@@ -820,6 +1006,7 @@ apiRouter.get('/api/meli/timeline', async (req, res) => {
     res.status(500).json({ error: 'Erro ao consultar timeline Meli' });
   }
 });
+
 
 // Lista de usuários Meli
 apiRouter.get('/api/meli/users', async (req, res) => {
@@ -859,6 +1046,7 @@ apiRouter.get('/api/meli/users', async (req, res) => {
         lr.productName,
         c.companyName,
         um.value AS idMotorista,
+        ml.level AS nivelBD,
         GROUP_CONCAT(DISTINCT sc.imsi ORDER BY sc.id SEPARATOR ', ') AS imsi,
         GROUP_CONCAT(DISTINCT sc.iccid ORDER BY sc.id SEPARATOR ', ') AS iccid,
         COUNT(DISTINCT sc.id) AS totalChips
@@ -867,15 +1055,30 @@ apiRouter.get('/api/meli/users', async (req, res) => {
       LEFT JOIN latest_rpc lr ON lr.idUser = u.id
       LEFT JOIN Company c ON c.id = lr.idCompany
       LEFT JOIN UsersMetadata um ON um.idUser = u.id AND um.name = 'identifier'
+      LEFT JOIN (
+        SELECT m1.identifier, m1.level
+        FROM Meli m1
+        INNER JOIN (SELECT identifier, MAX(id) AS maxId FROM Meli GROUP BY identifier) m2 ON m1.id = m2.maxId
+      ) ml ON ml.identifier = um.value
       LEFT JOIN SimCards sc ON sc.idUser = u.id
       WHERE u.internalUser = 0
       GROUP BY u.id, u.cdate, u.status, u.idUserParent,
         lr.amount, lr.paymentMethod, lr.statusRecorrencia, lr.productName,
-        c.companyName, um.value
+        c.companyName, um.value, ml.level
       ORDER BY u.cdate DESC
     `);
 
-    res.json(rows);
+    // Enrich with CSV data
+    const enriched = rows.map(r => {
+      const obj = JSON.parse(JSON.stringify(r));
+      const csv = meliCsvMap.get(String(obj.idMotorista)) || {};
+      obj.csvLevelName = csv.csvLevelName || null;
+      obj.csvMovement = csv.csvMovement || null;
+      obj.naBase = csv.csvLevelName ? 'Sim' : 'Nao';
+      return obj;
+    });
+
+    res.json(enriched);
   } catch (err) {
     console.error('Meli users error:', err);
     res.status(500).json({ error: 'Erro ao consultar usuários Meli' });

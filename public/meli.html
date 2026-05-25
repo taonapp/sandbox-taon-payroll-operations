@@ -80,14 +80,6 @@
             <span><span class="dot dot-purple"></span> Dependentes: <b id="depCad">-</b></span>
           </div>
         </div>
-        <div class="card accent-green">
-          <span class="card-label">Ativos (enabled)</span>
-          <span class="card-value" id="totalAtivos">-</span>
-          <div class="card-breakdown">
-            <span><span class="dot dot-blue"></span> Titulares: <b id="titAtivos">-</b></span>
-            <span><span class="dot dot-purple"></span> Dependentes: <b id="depAtivos">-</b></span>
-          </div>
-        </div>
         <div class="card accent-orange">
           <span class="card-label">Com Assinatura Ativa</span>
           <span class="card-value" id="totalAssinatura">-</span>
@@ -101,7 +93,7 @@
       <!-- Receita e Ticket Medio -->
       <section class="cards-row">
         <div class="card accent-green">
-          <span class="card-label">Receita Payroll</span>
+          <span class="card-label">Receita</span>
           <span class="card-value" id="receitaTotal">-</span>
         </div>
         <div class="card accent-orange">
@@ -112,8 +104,8 @@
           <span class="card-label">Chips Associados</span>
           <span class="card-value" id="totalChips">-</span>
           <div class="card-breakdown">
-            <span><span class="dot dot-blue"></span> Fisicos: <b id="chipsFisicos">-</b></span>
-            <span><span class="dot dot-purple"></span> eSIM: <b id="chipsEsim">-</b></span>
+            <span><span class="dot dot-blue"></span> Fisicos: <b id="chipsFisicos">-</b> <small id="chipsFisicosPct"></small></span>
+            <span><span class="dot dot-purple"></span> eSIM: <b id="chipsEsim">-</b> <small id="chipsEsimPct"></small></span>
           </div>
         </div>
         <div class="card accent-purple clickable-card" id="cardApn">
@@ -138,8 +130,14 @@
       <section class="chart-section">
         <div class="card">
           <span class="card-label">Cadastros por Dia</span>
+          <div class="month-nav">
+            <button class="month-arrow" id="monthPrev">&#8249;</button>
+            <span class="month-label" id="monthLabel"></span>
+            <button class="month-arrow" id="monthNext">&#8250;</button>
+          </div>
           <div class="chart-legend" id="chartLegend"></div>
           <div class="chart-container" id="chart"></div>
+          <div class="chart-labels" id="chartLabels"></div>
         </div>
       </section>
 
@@ -155,6 +153,12 @@
                 <button class="filter-btn" data-filter="Titular">Titulares</button>
                 <button class="filter-btn" data-filter="Dependente">Dependentes</button>
               </div>
+              <div class="filter-group">
+                <button class="filter-btn active" data-csv="all">Todos</button>
+                <button class="filter-btn" data-csv="Sim">Na Base CSV</button>
+                <button class="filter-btn" data-csv="Nao">Fora da Base</button>
+              </div>
+              <button class="export-btn" id="exportIds">Exportar IDs</button>
               <span class="result-count" id="resultCount"></span>
             </div>
           </div>
@@ -171,6 +175,10 @@
                   <th>Valor</th>
                   <th>Pagamento</th>
                   <th>Empresa</th>
+                  <th>Na Base CSV</th>
+                  <th>Nivel BD</th>
+                  <th>Nivel CSV</th>
+                  <th>Movimento</th>
                   <th>IMSI</th>
                   <th>ICCID</th>
                 </tr>

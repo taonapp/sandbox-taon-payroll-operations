@@ -70,6 +70,12 @@
           <option value="Titular">Titulares</option>
           <option value="Dependente">Dependentes</option>
         </select>
+        <select class="filter-select hidden" id="filterChip">
+          <option value="">Todos os chips</option>
+          <option value="Sim">Com chip ativo</option>
+          <option value="Inativo">Chip inativo</option>
+          <option value="Sem chip">Sem chip</option>
+        </select>
         <span class="result-count" id="resultCount"></span>
         <div id="refreshContainer"></div>
       </div>
@@ -78,11 +84,39 @@
     <div class="tabs" id="tabs">
       <button class="tab active" data-view="total">Base Total do Mes</button>
       <button class="tab" data-view="cobranca">Cobranca do Mes (corte dia 20)</button>
+      <button class="tab" data-view="todos">Todos os Cadastrados</button>
     </div>
 
     <div id="loading" class="loading">Carregando dados...</div>
 
     <div id="page" class="hidden">
+      <!-- Cobrança por Pagador -->
+      <section class="table-section" id="payersSection">
+        <div class="card table-card">
+          <div class="payers-header" id="payersToggle">
+            <span class="card-label" id="payersLabel">Cobranca por Pagador (base total)</span>
+            <span class="payers-toggle-icon" id="payersIcon">&#9660;</span>
+          </div>
+          <div id="payersContent">
+            <div class="table-scroll" style="max-height: 400px; overflow-y: auto;">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Nome</th>
+                    <th>CPF</th>
+                    <th>Valor Total Folha</th>
+                    <th>Numero de Linhas</th>
+                  </tr>
+                </thead>
+                <tbody id="payersTableBody"></tbody>
+              </table>
+            </div>
+            <div class="payers-totals" id="payersTotals"></div>
+          </div>
+        </div>
+      </section>
+
       <section class="table-section">
         <div class="card table-card">
           <div class="table-scroll">
