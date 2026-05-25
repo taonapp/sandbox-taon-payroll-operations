@@ -2,6 +2,7 @@ const $ = (id) => document.getElementById(id);
 
 let allUsers = [];
 let currentFilter = 'all';
+let csvFilter = 'all';
 let searchTerm = '';
 
 function formatCurrency(n) {
@@ -25,6 +26,35 @@ function formatDay(dateStr) {
 }
 
 let loaded = false;
+let selectedMonth = '';
+
+function getCurrentMonth() {
+  const now = new Date();
+  return now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+}
+
+function formatMonthLabel(ym) {
+  const [y, m] = ym.split('-');
+  const names = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+  return names[Number(m) - 1] + ' ' + y;
+}
+
+function shiftMonth(ym, delta) {
+  const [y, m] = ym.split('-').map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+
+function updateMonthNav() {
+  $('monthLabel').textContent = formatMonthLabel(selectedMonth);
+}
+
+async function loadTimeline() {
+  const res = await fetch(`/payroll-ops/api/meli/timeline?month=${selectedMonth}`);
+  if (!res.ok) throw new Error('API error');
+  const timeline = await res.json();
+  renderTimeline(timeline);
+}
 
 async function loadAll() {
   const isFirstLoad = !loaded;
@@ -32,24 +62,24 @@ async function loadAll() {
   if (isFirstLoad) {
     $('loading').classList.remove('hidden');
     $('page').classList.add('hidden');
+    selectedMonth = getCurrentMonth();
+    updateMonthNav();
   }
 
   try {
-    const [summaryRes, timelineRes, usersRes] = await Promise.all([
+    const [summaryRes, usersRes] = await Promise.all([
       fetch('/payroll-ops/api/meli/summary'),
-      fetch('/payroll-ops/api/meli/timeline'),
       fetch('/payroll-ops/api/meli/users'),
     ]);
 
-    if (!summaryRes.ok || !timelineRes.ok || !usersRes.ok) throw new Error('API error');
+    if (!summaryRes.ok || !usersRes.ok) throw new Error('API error');
 
     const summary = await summaryRes.json();
-    const timeline = await timelineRes.json();
     allUsers = await usersRes.json();
 
     renderSummary(summary);
     renderPieChart(allUsers);
-    renderTimeline(timeline);
+    await loadTimeline();
     renderTable();
 
     if (isFirstLoad) {
@@ -74,10 +104,6 @@ function renderSummary(s) {
   $('titCad').textContent = (Number(s.titularesCadastrados) || 0).toLocaleString('pt-BR');
   $('depCad').textContent = (Number(s.dependentesCadastrados) || 0).toLocaleString('pt-BR');
 
-  $('totalAtivos').textContent = totalAtivos.toLocaleString('pt-BR');
-  $('titAtivos').textContent = (Number(s.titularesAtivos) || 0).toLocaleString('pt-BR');
-  $('depAtivos').textContent = (Number(s.dependentesAtivos) || 0).toLocaleString('pt-BR');
-
   $('totalAssinatura').textContent = totalAssinatura.toLocaleString('pt-BR');
   $('titAssinatura').textContent = (Number(s.titularesAssinatura) || 0).toLocaleString('pt-BR');
   $('depAssinatura').textContent = (Number(s.dependentesAssinatura) || 0).toLocaleString('pt-BR');
@@ -86,9 +112,13 @@ function renderSummary(s) {
   $('ticketMedio').textContent = formatCurrency(s.ticketMedio);
 
   $('totalChips').textContent = (Number(s.totalChips) || 0).toLocaleString('pt-BR');
-  $('chipsFisicos').textContent = (Number(s.chipsFisicos) || 0).toLocaleString('pt-BR');
-  $('chipsEsim').textContent = (Number(s.chipsEsim) || 0).toLocaleString('pt-BR');
+  const chipsFisicos = Number(s.chipsFisicos) || 0;
+  const chipsEsim = Number(s.chipsEsim) || 0;
+  $('chipsFisicos').textContent = chipsFisicos.toLocaleString('pt-BR');
+  $('chipsEsim').textContent = chipsEsim.toLocaleString('pt-BR');
   const totalChips = Number(s.totalChips) || 0;
+  $('chipsFisicosPct').textContent = totalChips > 0 ? `(${((chipsFisicos / totalChips) * 100).toFixed(1)}%)` : '';
+  $('chipsEsimPct').textContent = totalChips > 0 ? `(${((chipsEsim / totalChips) * 100).toFixed(1)}%)` : '';
   const chipsApn = Number(s.chipsApn) || 0;
   $('chipsApn').textContent = chipsApn.toLocaleString('pt-BR');
   $('apnPct').textContent = totalChips > 0 ? ((chipsApn / totalChips) * 100).toFixed(1) + '% dos chips' : '';
@@ -212,11 +242,15 @@ function renderPieChart(users) {
 function renderTimeline(data) {
   const chart = $('chart');
   const legend = $('chartLegend');
+  const labels = $('chartLabels');
   chart.innerHTML = '';
   legend.innerHTML = '';
+  labels.innerHTML = '';
 
   if (data.length === 0) {
-    chart.innerHTML = '<span style="color:var(--text-muted);font-size:14px">Sem dados</span>';
+    const [y, m] = selectedMonth.split('-');
+    const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+    chart.innerHTML = '<div style="color:var(--text-muted);font-size:18px;text-align:center;width:100%;padding:40px 0">Nenhuma ativação em ' + monthNames[Number(m) - 1] + ' de ' + y + '</div>';
     return;
   }
 
@@ -230,9 +264,16 @@ function renderTimeline(data) {
 
   const sortedDays = Object.keys(days).sort();
   const startDate = new Date(sortedDays[0] + 'T12:00:00');
-  const today = new Date();
-  today.setHours(12, 0, 0, 0);
-  for (let d = new Date(startDate); d <= today; d.setDate(d.getDate() + 1)) {
+  const isCurrentMonth = selectedMonth === getCurrentMonth();
+  let endDate;
+  if (isCurrentMonth) {
+    endDate = new Date();
+    endDate.setHours(12, 0, 0, 0);
+  } else {
+    const [y, m] = selectedMonth.split('-').map(Number);
+    endDate = new Date(y, m, 0, 12, 0, 0);
+  }
+  for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
     const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
     if (!days[key]) days[key] = {};
   }
@@ -259,7 +300,7 @@ function renderTimeline(data) {
 
     const barStack = document.createElement('div');
     barStack.className = 'chart-bar-stack';
-    barStack.style.height = Math.max((total / maxVal) * 140, 2) + 'px';
+    barStack.style.height = Math.max((total / maxVal) * 120, 2) + 'px';
 
     planoList.forEach((plano, i) => {
       const count = planoCounts[plano] || 0;
@@ -278,15 +319,32 @@ function renderTimeline(data) {
       barStack.appendChild(seg);
     });
 
-    const label = document.createElement('span');
-    label.className = 'chart-bar-label';
-    label.textContent = formatDay(dia);
-
     wrap.appendChild(valLabel);
     wrap.appendChild(barStack);
-    wrap.appendChild(label);
     chart.appendChild(wrap);
+
+    const slot = document.createElement('div');
+    slot.className = 'chart-label-slot';
+    slot.dataset.dia = dia;
+    labels.appendChild(slot);
   });
+
+  // Show labels at intervals to avoid overlap
+  const totalDays = dayEntries.length;
+  const step = totalDays <= 15 ? 1 : totalDays <= 30 ? 2 : 3;
+  const slots = labels.querySelectorAll('.chart-label-slot');
+  slots.forEach((slot, i) => {
+    if (i % step === 0 || i === totalDays - 1) {
+      const label = document.createElement('span');
+      label.className = 'chart-bar-label';
+      label.textContent = formatDay(slot.dataset.dia);
+      slot.appendChild(label);
+    }
+  });
+
+  // Sync horizontal scroll
+  chart.addEventListener('scroll', () => { labels.scrollLeft = chart.scrollLeft; });
+  labels.addEventListener('scroll', () => { chart.scrollLeft = labels.scrollLeft; });
 }
 
 function renderTable() {
@@ -295,6 +353,7 @@ function renderTable() {
 
   const filtered = allUsers.filter(u => {
     if (currentFilter !== 'all' && u.tipo !== currentFilter) return false;
+    if (csvFilter !== 'all' && u.naBase !== csvFilter) return false;
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
       const match = String(u.idUser).includes(term)
@@ -307,14 +366,24 @@ function renderTable() {
   $('resultCount').textContent = `${filtered.length} resultado${filtered.length !== 1 ? 's' : ''}`;
 
   if (filtered.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--text-muted)">Nenhum usuario encontrado</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="15" style="text-align:center;color:var(--text-muted)">Nenhum usuario encontrado</td></tr>';
     return;
   }
+
+  const nivelBdLabel = (v) => {
+    if (!v) return '-';
+    const map = { meliprata: 'Prata', meliouro: 'Ouro', meliplatina: 'Platina' };
+    return map[v] || v;
+  };
 
   filtered.forEach(u => {
     const tr = document.createElement('tr');
     const statusColor = u.status === 'enabled' ? 'var(--green)' : 'var(--text-muted)';
     const paymentLabel = u.paymentMethod === 'payroll' ? 'Folha' : (u.paymentMethod || '-');
+    const naBaseColor = u.naBase === 'Sim' ? 'var(--green)' : 'var(--orange)';
+    const bdLevel = nivelBdLabel(u.nivelBD);
+    const csvLevel = u.csvLevelName || '-';
+    const movColor = u.csvMovement === 'Up' ? 'var(--green)' : u.csvMovement === 'Down' ? '#ef4444' : 'var(--text-muted)';
 
     tr.innerHTML = `
       <td>${u.idUser}</td>
@@ -326,6 +395,10 @@ function renderTable() {
       <td>${u.amount ? formatCurrency(u.amount) : '-'}</td>
       <td>${paymentLabel}</td>
       <td>${u.companyName || '-'}</td>
+      <td><span style="color:${naBaseColor};font-weight:600">${u.naBase}</span></td>
+      <td>${bdLevel}</td>
+      <td>${csvLevel}</td>
+      <td><span style="color:${movColor}">${u.csvMovement || '-'}</span></td>
       <td>${u.imsi || '-'}</td>
       <td>${u.iccid || '-'}</td>
     `;
@@ -333,18 +406,61 @@ function renderTable() {
   });
 }
 
+$('monthPrev').addEventListener('click', () => {
+  selectedMonth = shiftMonth(selectedMonth, -1);
+  updateMonthNav();
+  loadTimeline();
+});
+
+$('monthNext').addEventListener('click', () => {
+  selectedMonth = shiftMonth(selectedMonth, 1);
+  updateMonthNav();
+  loadTimeline();
+});
+
 $('searchInput').addEventListener('input', (e) => {
   searchTerm = e.target.value.trim();
   renderTable();
 });
 
-document.querySelectorAll('.filter-btn').forEach(btn => {
+document.querySelectorAll('[data-filter]').forEach(btn => {
   btn.addEventListener('click', () => {
-    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('[data-filter]').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     currentFilter = btn.dataset.filter;
     renderTable();
   });
+});
+
+document.querySelectorAll('[data-csv]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('[data-csv]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    csvFilter = btn.dataset.csv;
+    renderTable();
+  });
+});
+
+$('exportIds').addEventListener('click', () => {
+  const filtered = allUsers.filter(u => {
+    if (currentFilter !== 'all' && u.tipo !== currentFilter) return false;
+    if (csvFilter !== 'all' && u.naBase !== csvFilter) return false;
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      return String(u.idUser).includes(term) || String(u.idMotorista || '').toLowerCase().includes(term);
+    }
+    return true;
+  });
+  const ids = filtered.map(u => u.idMotorista).filter(Boolean);
+  if (ids.length === 0) return;
+  const csv = 'DRIVER_ID\n' + ids.join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'meli26_driver_ids.csv';
+  a.click();
+  URL.revokeObjectURL(url);
 });
 
 // Modal Chips

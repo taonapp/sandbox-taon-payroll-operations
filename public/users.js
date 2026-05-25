@@ -15,6 +15,63 @@ function formatDate(d) {
   return new Date(d).toLocaleDateString('pt-BR');
 }
 
+let payersLoaded = false;
+
+function getPayersLabel() {
+  if (currentView === 'cobranca') return 'Cobranca por Pagador (corte dia 20)';
+  if (currentView === 'total') return 'Cobranca por Pagador (base total)';
+  return 'Cobranca por Pagador (todos)';
+}
+
+async function loadPayers() {
+  const tbody = $('payersTableBody');
+  const totals = $('payersTotals');
+  $('payersLabel').textContent = getPayersLabel();
+
+  try {
+    const res = await fetch(`/payroll-ops/api/users/payers?view=${currentView}`);
+    if (!res.ok) throw new Error('Erro na API');
+    const payers = await res.json();
+
+    tbody.innerHTML = '';
+    let sumValor = 0;
+    let sumLinhas = 0;
+
+    payers.forEach(p => {
+      sumValor += Number(p.valorTotalFolha) || 0;
+      sumLinhas += Number(p.totalLinhas) || 0;
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${p.idUser || '-'}</td>
+        <td>${p.name || '-'}</td>
+        <td>${p.cpf || '-'}</td>
+        <td>${formatCurrency(p.valorTotalFolha)}</td>
+        <td>${Number(p.totalLinhas).toLocaleString('pt-BR')}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    totals.innerHTML = `
+      <span><b>Total:</b> ${formatCurrency(sumValor)}</span>
+      <span><b>Linhas:</b> ${sumLinhas.toLocaleString('pt-BR')}</span>
+      <span><b>Pagadores:</b> ${payers.length}</span>
+    `;
+
+    payersLoaded = true;
+  } catch (err) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted)">Erro ao carregar dados</td></tr>';
+    console.error(err);
+  }
+}
+
+// Toggle payers section
+$('payersToggle').addEventListener('click', () => {
+  const content = $('payersContent');
+  const icon = $('payersIcon');
+  const isHidden = content.classList.toggle('hidden');
+  icon.textContent = isHidden ? '\u25B6' : '\u25BC';
+});
+
 let usersLoaded = false;
 
 async function loadUsers() {
@@ -29,6 +86,8 @@ async function loadUsers() {
     if (!res.ok) throw new Error('Erro na API');
     allUsers = await res.json();
     renderTable();
+
+    loadPayers();
 
     if (isFirstLoad) {
       $('loading').classList.add('hidden');
@@ -51,6 +110,11 @@ function getFiltered() {
 
   if (tipo) {
     filtered = filtered.filter(u => u.tipo === tipo);
+  }
+
+  const chip = $('filterChip').value;
+  if (chip) {
+    filtered = filtered.filter(u => u.statusSimCard === chip);
   }
 
   if (search) {
@@ -107,7 +171,9 @@ function renderTable() {
       <td>${u.diasDeUso || '-'}</td>
       <td>${formatCurrency(u.valorProporcional)}</td>
       <td>${u.companyName || '-'}</td>
-      <td>${u.idSimCard || '-'}</td>
+      <td>${currentView === 'todos'
+        ? `<span class="${u.statusSimCard === 'Sim' ? 'badge-sim' : u.statusSimCard === 'Inativo' ? 'badge-inativo' : 'badge-semchip'}">${u.statusSimCard || '-'}</span>`
+        : (u.idSimCard || '-')}</td>
     `;
     tbody.appendChild(tr);
   });
@@ -124,6 +190,7 @@ function renderTable() {
 // Event listeners
 $('search').addEventListener('input', renderTable);
 $('filterTipo').addEventListener('change', renderTable);
+$('filterChip').addEventListener('change', renderTable);
 
 document.querySelectorAll('.sortable').forEach(th => {
   th.addEventListener('click', () => {
@@ -144,9 +211,19 @@ document.querySelectorAll('.tab').forEach(tab => {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     tab.classList.add('active');
     currentView = tab.dataset.view;
+    const chipFilter = $('filterChip');
+    if (currentView === 'todos') {
+      chipFilter.classList.remove('hidden');
+    } else {
+      chipFilter.classList.add('hidden');
+      chipFilter.value = '';
+    }
     loadUsers();
   });
 });
 
 loadUsers();
-initRefreshBar('refreshContainer', loadUsers);
+initRefreshBar('refreshContainer', () => {
+  payersLoaded = false;
+  loadUsers();
+});

@@ -129,3 +129,65 @@
   font-size: 11px;
   font-weight: 600;
 }
+
+.badge-sim {
+  color: var(--green);
+  background: rgba(34, 197, 94, 0.1);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.badge-inativo {
+  color: var(--text-muted);
+  background: rgba(148, 163, 184, 0.1);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.badge-semchip {
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.1);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* Payers section */
+.payers-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+  padding-bottom: 12px;
+}
+
+.payers-header:hover .card-label {
+  color: var(--text);
+}
+
+.payers-toggle-icon {
+  font-size: 12px;
+  color: var(--text-muted);
+  transition: transform 0.2s;
+}
+
+.payers-totals {
+  display: flex;
+  gap: 24px;
+  padding: 12px 10px 0;
+  font-size: 13px;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border);
+  margin-top: 8px;
+}
+
+.payers-totals b {
+  color: var(--text);
+  font-weight: 600;
+}
