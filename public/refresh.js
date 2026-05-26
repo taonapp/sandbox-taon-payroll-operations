@@ -44,12 +44,12 @@ function initRefreshBar(containerId, reloadFn) {
 
   function startSpin() {
     icon.style.animation = 'refresh-spin 0.8s linear infinite';
-    icon.style.color = 'var(--blue)';
+    btn.classList.add('loading');
   }
 
   function stopSpin() {
     icon.style.animation = '';
-    icon.style.color = '';
+    btn.classList.remove('loading');
   }
 
   async function doRefresh() {
@@ -58,7 +58,8 @@ function initRefreshBar(containerId, reloadFn) {
     startSpin();
 
     try {
-      await reloadFn();
+      const minDelay = new Promise(r => setTimeout(r, 400));
+      await Promise.all([reloadFn(), minDelay]);
     } catch (e) {
       console.error('Refresh error:', e);
     } finally {
