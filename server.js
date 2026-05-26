@@ -522,11 +522,17 @@ apiRouter.get('/api/users/payers/export', async (req, res) => {
 
     rows.forEach(r => {
       const valor = Number(r.valorTotalFolha) || 0;
-      const formatted = 'R$ ' + valor.toFixed(2).replace('.', ',');
-      data.push([null, r.name || '', r.cpf || '', formatted]);
+      data.push([null, r.name || '', r.cpf || '', valor]);
     });
 
     const ws = XLSX.utils.aoa_to_sheet(data);
+
+    // Format value column as number with 2 decimal places
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    for (let r = 3; r <= range.e.r; r++) {
+      const cell = ws[XLSX.utils.encode_cell({ r, c: 3 })];
+      if (cell) { cell.t = 'n'; cell.z = '#,##0.00'; }
+    }
 
     // Set column widths
     ws['!cols'] = [
