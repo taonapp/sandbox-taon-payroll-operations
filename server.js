@@ -3,6 +3,7 @@ const express = require('express');
 const mysql = require('mysql2/promise');
 const path = require('path');
 const fs = require('fs');
+const XLSX = require('xlsx');
 
 const app = express();
 const PORT = process.env.PORT || 3004;
@@ -140,7 +141,7 @@ function buildDashboardQuery(cutoffFilter, { requireSimCard = true } = {}) {
             b.idUser,
             u.idUserParent,
             CASE
-                WHEN fp.dateStart IS NULL THEN 0
+                WHEN fp.dateStart IS NULL THEN rm.amount
                 WHEN
                     DATEDIFF(pa.proximo_dia_7, DATE(fp.dateStart)) + 1
                     >= DATEDIFF(pa.proximo_dia_7, pa.dia_7_anterior)
@@ -165,10 +166,10 @@ function buildDashboardQuery(cutoffFilter, { requireSimCard = true } = {}) {
                 u.idUserParent IS NOT NULL
                 OR (
                     u.idUserParent IS NULL
-                    AND mde.maxDateEnd <= TIMESTAMP(
+                    AND (mde.maxDateEnd IS NULL OR mde.maxDateEnd <= TIMESTAMP(
                         DATE_FORMAT(DATE_ADD(CURDATE(), INTERVAL 1 MONTH), '%Y-%m-07'),
                         '03:00:00'
-                    )
+                    ))
                 )
               )
           ${requireSimCard ? `AND EXISTS (
@@ -308,7 +309,158 @@ apiRouter.get('/api/users/payers', async (req, res) => {
           SELECT
               rm.idUserPayer,
               CASE
-                  WHEN fp.dateStart IS NULL THEN 0
+                  WHEN u.idUserParent IS NOT NULL THEN 1
+                  WHEN mde.maxDateEnd IS NULL THEN 1
+                  WHEN mde.maxDateEnd <= TIMESTAMP(
+                      DATE_FORMAT(DATE_ADD(CURDATE(), INTERVAL 1 MONTH), '%Y-%m-07'),
+                      '03:00:00'
+                  ) THEN 1
+                  ELSE 0
+              END AS dentroCobranca,
+              CASE
+                  WHEN fp.dateStart IS NULL THEN rm.amount
+                  WHEN
+                      DATEDIFF(pa.proximo_dia_7, DATE(fp.dateStart)) + 1
+                      >= DATEDIFF(pa.proximo_dia_7, pa.dia_7_anterior)
+                  THEN rm.amount
+                  ELSE
+                      ROUND(
+                          rm.amount
+                          * (DATEDIFF(pa.proximo_dia_7, DATE(fp.dateStart)) + 1)
+                          / NULLIF(DATEDIFF(pa.proximo_dia_7, pa.dia_7_anterior), 0),
+                          2
+                      )
+              END AS valorProporcional
+          FROM base_payroll b
+          LEFT JOIN Users u ON u.id = b.idUser
+          LEFT JOIN recurring_main rm ON rm.idUser = b.idUser
+          LEFT JOIN first_purchase fp ON fp.idUser = b.idUser
+          LEFT JOIN max_date_end mde ON mde.idUser = b.idUser
+          CROSS JOIN periodo_atual pa
+          WHERE u.internalUser = 0
+            AND u.status = 'enabled'
+            AND EXISTS (
+                  SELECT 1
+                  FROM SimCards sc
+                  WHERE sc.idUser = b.idUser
+                    AND sc.idStatus NOT IN (22,3,18,8,9,14)
+              )
+      )
+      SELECT
+          u.id AS idUser,
+          u.name,
+          u.cpf,
+          SUM(CASE WHEN bf.dentroCobranca = 1 THEN bf.valorProporcional ELSE 0 END) AS valorTotalFolha,
+          SUM(bf.dentroCobranca) AS totalLinhas,
+          COUNT(*) AS totalLinhasCobraveis
+      FROM base_final bf
+      LEFT JOIN Users u ON u.id = bf.idUserPayer
+      GROUP BY bf.idUserPayer
+      ORDER BY SUM(bf.dentroCobranca) DESC
+    `);
+
+    res.json(rows);
+  } catch (err) {
+    console.error('Payers query error:', err);
+    res.status(500).json({ error: 'Erro ao consultar dados por pagador' });
+  }
+});
+
+// Exportar cobrança do mês como XLSX (mesmo formato da planilha manual)
+apiRouter.get('/api/users/payers/export', async (req, res) => {
+  try {
+    const [rows] = await pool.query(`
+      WITH base_payroll AS (
+          SELECT DISTINCT rpc.idUser
+          FROM RecurringPurchasesConfig rpc
+          LEFT JOIN Users u ON u.id = rpc.idUser
+          LEFT JOIN Products p ON p.id = rpc.idProduct
+          WHERE rpc.paymentMethod = 'payroll'
+            AND rpc.idStatus = 1
+            AND u.status = 'enabled'
+            AND u.internalUser = 0
+            AND p.\`type\` = 'main'
+            AND u.cdate < DATE_ADD(DATE_FORMAT(CURDATE(), '%Y-%m-20'), INTERVAL 1 DAY)
+      ),
+      recurring_main AS (
+          SELECT *
+          FROM (
+              SELECT
+                  rpc.idProduct,
+                  rpc.idUser,
+                  rpc.idUserPayer,
+                  rpc.amount,
+                  rpc.paymentMethod,
+                  rpc.idCompany,
+                  rpc.cdate,
+                  ROW_NUMBER() OVER (
+                      PARTITION BY rpc.idUser
+                      ORDER BY rpc.cdate DESC
+                  ) AS rn
+              FROM RecurringPurchasesConfig rpc
+              LEFT JOIN Products p ON p.id = rpc.idProduct
+              WHERE p.\`type\` LIKE 'main%'
+                AND rpc.idStatus = 1
+                AND rpc.paymentMethod = 'payroll'
+          ) x
+          WHERE rn = 1
+      ),
+      first_purchase AS (
+          SELECT *
+          FROM (
+              SELECT
+                  pp.idUser,
+                  pp.dateStart,
+                  ROW_NUMBER() OVER (
+                      PARTITION BY pp.idUser
+                      ORDER BY pp.dateStart ASC
+                  ) AS rn
+              FROM PurchasedProducts pp
+              LEFT JOIN Products p ON p.id = pp.idProduct
+              WHERE pp.status = 'succeeded'
+                AND p.\`type\` LIKE 'main%'
+          ) x
+          WHERE rn = 1
+      ),
+      max_date_end AS (
+          SELECT
+              pp.idUser,
+              MAX(pp.dateEnd) AS maxDateEnd
+          FROM PurchasedProducts pp
+          INNER JOIN Products p ON p.id = pp.idProduct
+          WHERE pp.status = 'succeeded'
+            AND (
+                  p.\`type\` LIKE 'main%'
+               OR p.\`type\` LIKE 'sponsor%'
+            )
+          GROUP BY pp.idUser
+      ),
+      periodo_atual AS (
+          SELECT
+              CASE
+                  WHEN DAY(NOW()) > 7 THEN
+                      TIMESTAMP(DATE_FORMAT(NOW(), '%Y-%m-07'), '00:00:00')
+                  ELSE
+                      TIMESTAMP(
+                          DATE_FORMAT(DATE_SUB(NOW(), INTERVAL 1 MONTH), '%Y-%m-07'),
+                          '00:00:00'
+                      )
+              END AS dia_7_anterior,
+              CASE
+                  WHEN DAY(NOW()) <= 7 THEN
+                      TIMESTAMP(DATE_FORMAT(NOW(), '%Y-%m-07'), '00:00:00')
+                  ELSE
+                      TIMESTAMP(
+                          DATE_FORMAT(DATE_ADD(NOW(), INTERVAL 1 MONTH), '%Y-%m-07'),
+                          '00:00:00'
+                      )
+              END AS proximo_dia_7
+      ),
+      base_final AS (
+          SELECT
+              rm.idUserPayer,
+              CASE
+                  WHEN fp.dateStart IS NULL THEN rm.amount
                   WHEN
                       DATEDIFF(pa.proximo_dia_7, DATE(fp.dateStart)) + 1
                       >= DATEDIFF(pa.proximo_dia_7, pa.dia_7_anterior)
@@ -333,10 +485,10 @@ apiRouter.get('/api/users/payers', async (req, res) => {
                   u.idUserParent IS NOT NULL
                   OR (
                       u.idUserParent IS NULL
-                      AND mde.maxDateEnd <= TIMESTAMP(
+                      AND (mde.maxDateEnd IS NULL OR mde.maxDateEnd <= TIMESTAMP(
                           DATE_FORMAT(DATE_ADD(CURDATE(), INTERVAL 1 MONTH), '%Y-%m-07'),
                           '03:00:00'
-                      )
+                      ))
                   )
                 )
             AND EXISTS (
@@ -347,21 +499,55 @@ apiRouter.get('/api/users/payers', async (req, res) => {
               )
       )
       SELECT
-          u.id AS idUser,
           u.name,
           u.cpf,
-          SUM(bf.valorProporcional) AS valorTotalFolha,
-          COUNT(*) AS totalLinhas
+          SUM(bf.valorProporcional) AS valorTotalFolha
       FROM base_final bf
       LEFT JOIN Users u ON u.id = bf.idUserPayer
       GROUP BY bf.idUserPayer
-      ORDER BY COUNT(*) DESC
+      ORDER BY u.name ASC
     `);
 
-    res.json(rows);
+    // Build XLSX matching the manual spreadsheet format
+    const now = new Date();
+    const monthNames = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
+    const monthLabel = monthNames[now.getMonth()];
+    const year = now.getFullYear();
+
+    const data = [
+      [null, null, null, null],
+      [null, null, null, null],
+      [null, 'Nome', 'CPF', 'Valor a ser descontado'],
+    ];
+
+    rows.forEach(r => {
+      const valor = Number(r.valorTotalFolha) || 0;
+      const formatted = 'R$ ' + valor.toFixed(2).replace('.', ',');
+      data.push([null, r.name || '', r.cpf || '', formatted]);
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(data);
+
+    // Set column widths
+    ws['!cols'] = [
+      { wch: 2 },
+      { wch: 50 },
+      { wch: 16 },
+      { wch: 24 },
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Página1');
+
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    const filename = `Cobranca-TaOn_${monthLabel}-${year}.xlsx`;
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buf);
   } catch (err) {
-    console.error('Payers query error:', err);
-    res.status(500).json({ error: 'Erro ao consultar dados por pagador' });
+    console.error('Export XLSX error:', err);
+    res.status(500).json({ error: 'Erro ao gerar XLSX' });
   }
 });
 
@@ -503,7 +689,7 @@ apiRouter.get('/api/users', async (req, res) => {
                   )
           END AS diasDeUso,
           CASE
-              WHEN fp.dateStart IS NULL THEN NULL
+              WHEN fp.dateStart IS NULL THEN rm.amount
               WHEN
                   DATEDIFF(pa.proximo_dia_7, DATE(fp.dateStart)) + 1
                   >= DATEDIFF(pa.proximo_dia_7, pa.dia_7_anterior)
@@ -541,10 +727,10 @@ apiRouter.get('/api/users', async (req, res) => {
               u.idUserParent IS NOT NULL
               OR (
                   u.idUserParent IS NULL
-                  AND mde.maxDateEnd <= TIMESTAMP(
+                  AND (mde.maxDateEnd IS NULL OR mde.maxDateEnd <= TIMESTAMP(
                       DATE_FORMAT(DATE_ADD(CURDATE(), INTERVAL 1 MONTH), '%Y-%m-07'),
                       '03:00:00'
-                  )
+                  ))
               )
             )
         ${isTodos ? '' : `AND EXISTS (
@@ -1007,6 +1193,36 @@ apiRouter.get('/api/meli/timeline', async (req, res) => {
   }
 });
 
+
+// Chips Meli por dia (timeline físico vs eSIM)
+apiRouter.get('/api/meli/chips-timeline', async (req, res) => {
+  try {
+    const [rows] = await pool.query(`
+      WITH meli_users AS (
+        SELECT DISTINCT mc.idUser
+        FROM MgmChain mc
+        WHERE mc.mgmInvCode = 'MELI26'
+          AND mc.nivel = 1
+      )
+      SELECT
+        DATE_FORMAT(u.cdate, '%Y-%m-%d') AS dia,
+        sc.type AS tipoChip,
+        COUNT(*) AS total
+      FROM meli_users mu
+      INNER JOIN Users u ON u.id = mu.idUser
+      INNER JOIN SimCards sc ON sc.idUser = u.id
+      WHERE u.internalUser = 0
+        ${req.query.month ? "AND DATE_FORMAT(u.cdate, '%Y-%m') = ?" : ''}
+      GROUP BY dia, sc.type
+      ORDER BY dia ASC, sc.type ASC
+    `, req.query.month ? [req.query.month] : []);
+
+    res.json(rows);
+  } catch (err) {
+    console.error('Meli chips timeline error:', err);
+    res.status(500).json({ error: 'Erro ao consultar timeline de chips' });
+  }
+});
 
 // Lista de usuários Meli
 apiRouter.get('/api/meli/users', async (req, res) => {

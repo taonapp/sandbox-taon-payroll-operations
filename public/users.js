@@ -36,30 +36,37 @@ async function loadPayers() {
     tbody.innerHTML = '';
     let sumValor = 0;
     let sumLinhas = 0;
+    let sumCobraveis = 0;
 
     payers.forEach(p => {
       sumValor += Number(p.valorTotalFolha) || 0;
       sumLinhas += Number(p.totalLinhas) || 0;
+      sumCobraveis += Number(p.totalLinhasCobraveis) || 0;
       const tr = document.createElement('tr');
+      const linhas = Number(p.totalLinhas);
+      const cobraveis = Number(p.totalLinhasCobraveis);
+      const diff = cobraveis > linhas;
       tr.innerHTML = `
         <td>${p.idUser || '-'}</td>
         <td>${p.name || '-'}</td>
         <td>${p.cpf || '-'}</td>
         <td>${formatCurrency(p.valorTotalFolha)}</td>
-        <td>${Number(p.totalLinhas).toLocaleString('pt-BR')}</td>
+        <td>${linhas.toLocaleString('pt-BR')}</td>
+        <td${diff ? ' style="color:var(--orange);font-weight:600"' : ''}>${cobraveis.toLocaleString('pt-BR')}</td>
       `;
       tbody.appendChild(tr);
     });
 
     totals.innerHTML = `
       <span><b>Total:</b> ${formatCurrency(sumValor)}</span>
-      <span><b>Linhas:</b> ${sumLinhas.toLocaleString('pt-BR')}</span>
+      <span><b>Linhas cobradas:</b> ${sumLinhas.toLocaleString('pt-BR')}</span>
+      <span><b>Total cobraveis:</b> ${sumCobraveis.toLocaleString('pt-BR')}</span>
       <span><b>Pagadores:</b> ${payers.length}</span>
     `;
 
     payersLoaded = true;
   } catch (err) {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted)">Erro ao carregar dados</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">Erro ao carregar dados</td></tr>';
     console.error(err);
   }
 }
@@ -134,7 +141,7 @@ function getFiltered() {
     if (sortCol === 'valorRecorrencia' || sortCol === 'valorProporcional' || sortCol === 'idUser') {
       va = Number(va) || 0;
       vb = Number(vb) || 0;
-    } else if (sortCol === 'dataCadastro') {
+    } else if (sortCol === 'dataCadastro' || sortCol === 'maxDateEnd') {
       va = va ? new Date(va).getTime() : 0;
       vb = vb ? new Date(vb).getTime() : 0;
     } else {
@@ -170,6 +177,7 @@ function renderTable() {
       <td>${formatCurrency(u.valorRecorrencia)}</td>
       <td>${u.diasDeUso || '-'}</td>
       <td>${formatCurrency(u.valorProporcional)}</td>
+      <td>${formatDate(u.maxDateEnd)}</td>
       <td>${u.companyName || '-'}</td>
       <td>${currentView === 'todos'
         ? `<span class="${u.statusSimCard === 'Sim' ? 'badge-sim' : u.statusSimCard === 'Inativo' ? 'badge-inativo' : 'badge-semchip'}">${u.statusSimCard || '-'}</span>`
@@ -212,11 +220,17 @@ document.querySelectorAll('.tab').forEach(tab => {
     tab.classList.add('active');
     currentView = tab.dataset.view;
     const chipFilter = $('filterChip');
+    const exportBtn = $('exportXlsx');
     if (currentView === 'todos') {
       chipFilter.classList.remove('hidden');
     } else {
       chipFilter.classList.add('hidden');
       chipFilter.value = '';
+    }
+    if (currentView === 'cobranca') {
+      exportBtn.classList.remove('hidden');
+    } else {
+      exportBtn.classList.add('hidden');
     }
     loadUsers();
   });

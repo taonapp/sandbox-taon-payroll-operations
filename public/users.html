@@ -81,10 +81,13 @@
       </div>
     </header>
 
-    <div class="tabs" id="tabs">
-      <button class="tab active" data-view="total">Base Total do Mes</button>
-      <button class="tab" data-view="cobranca">Cobranca do Mes (corte dia 20)</button>
-      <button class="tab" data-view="todos">Todos os Cadastrados</button>
+    <div class="tabs-row">
+      <div class="tabs" id="tabs">
+        <button class="tab active" data-view="total">Base Total do Mes</button>
+        <button class="tab" data-view="cobranca">Cobranca do Mes (corte dia 20)</button>
+        <button class="tab" data-view="todos">Todos os Cadastrados</button>
+      </div>
+      <a class="export-btn hidden" id="exportXlsx" href="/payroll-ops/api/users/payers/export" download>Exportar XLSX</a>
     </div>
 
     <div id="loading" class="loading">Carregando dados...</div>
@@ -106,7 +109,8 @@
                     <th>Nome</th>
                     <th>CPF</th>
                     <th>Valor Total Folha</th>
-                    <th>Numero de Linhas</th>
+                    <th>Linhas Cobradas</th>
+                    <th>Total Linhas Cobraveis</th>
                   </tr>
                 </thead>
                 <tbody id="payersTableBody"></tbody>
@@ -133,6 +137,7 @@
                   <th class="sortable" data-col="valorRecorrencia">Valor</th>
                   <th>Dias de Uso</th>
                   <th class="sortable" data-col="valorProporcional">Valor Proporcional</th>
+                  <th class="sortable" data-col="maxDateEnd">maxDateEnd</th>
                   <th>Empresa</th>
                   <th>SimCard</th>
                 </tr>

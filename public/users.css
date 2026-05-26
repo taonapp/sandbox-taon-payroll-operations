@@ -191,3 +191,33 @@
   color: var(--text);
   font-weight: 600;
 }
+
+/* Tabs row with export button */
+.tabs-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.tabs-row .tabs {
+  margin-bottom: 0;
+}
+
+.tabs-row .export-btn {
+  background: var(--green);
+  color: white;
+  border: none;
+  padding: 8px 18px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: opacity 0.15s;
+}
+
+.tabs-row .export-btn:hover {
+  opacity: 0.85;
+}

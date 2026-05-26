@@ -33,6 +33,15 @@
   background: var(--surface-hover);
 }
 
+.refresh-btn.loading {
+  color: var(--blue);
+  pointer-events: none;
+}
+
+.refresh-btn.loading span {
+  opacity: 0.6;
+}
+
 .refresh-icon {
   display: block;
   width: 16px;

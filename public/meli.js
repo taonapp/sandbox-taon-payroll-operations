@@ -49,11 +49,20 @@ function updateMonthNav() {
   $('monthLabel').textContent = formatMonthLabel(selectedMonth);
 }
 
+let selectedChipMonth = '';
+
 async function loadTimeline() {
   const res = await fetch(`/payroll-ops/api/meli/timeline?month=${selectedMonth}`);
   if (!res.ok) throw new Error('API error');
   const timeline = await res.json();
   renderTimeline(timeline);
+}
+
+async function loadChipTimeline() {
+  const res = await fetch(`/payroll-ops/api/meli/chips-timeline?month=${selectedChipMonth}`);
+  if (!res.ok) throw new Error('API error');
+  const data = await res.json();
+  renderChipTimeline(data);
 }
 
 async function loadAll() {
@@ -63,7 +72,9 @@ async function loadAll() {
     $('loading').classList.remove('hidden');
     $('page').classList.add('hidden');
     selectedMonth = getCurrentMonth();
+    selectedChipMonth = getCurrentMonth();
     updateMonthNav();
+    $('chipMonthLabel').textContent = formatMonthLabel(selectedChipMonth);
   }
 
   try {
@@ -79,7 +90,7 @@ async function loadAll() {
 
     renderSummary(summary);
     renderPieChart(allUsers);
-    await loadTimeline();
+    await Promise.all([loadTimeline(), loadChipTimeline()]);
     renderTable();
 
     if (isFirstLoad) {
@@ -347,6 +358,115 @@ function renderTimeline(data) {
   labels.addEventListener('scroll', () => { chart.scrollLeft = labels.scrollLeft; });
 }
 
+const CHIP_COLORS = { 'fisico': '#3b82f6', 'e-sim': '#a855f7' };
+const CHIP_LABELS = { 'fisico': 'Físico', 'e-sim': 'eSIM' };
+
+function renderChipTimeline(data) {
+  const chart = $('chipChart');
+  const legend = $('chipChartLegend');
+  const labels = $('chipChartLabels');
+  chart.innerHTML = '';
+  legend.innerHTML = '';
+  labels.innerHTML = '';
+
+  if (data.length === 0) {
+    const [y, m] = selectedChipMonth.split('-');
+    const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+    chart.innerHTML = '<div style="color:var(--text-muted);font-size:18px;text-align:center;width:100%;padding:40px 0">Nenhum chip em ' + monthNames[Number(m) - 1] + ' de ' + y + '</div>';
+    return;
+  }
+
+  const days = {};
+  const tipos = new Set();
+  data.forEach(d => {
+    if (!days[d.dia]) days[d.dia] = {};
+    days[d.dia][d.tipoChip] = Number(d.total);
+    tipos.add(d.tipoChip);
+  });
+
+  const sortedDays = Object.keys(days).sort();
+  const startDate = new Date(sortedDays[0] + 'T12:00:00');
+  const isCurrentMonth = selectedChipMonth === getCurrentMonth();
+  let endDate;
+  if (isCurrentMonth) {
+    endDate = new Date();
+    endDate.setHours(12, 0, 0, 0);
+  } else {
+    const [y, m] = selectedChipMonth.split('-').map(Number);
+    endDate = new Date(y, m, 0, 12, 0, 0);
+  }
+  for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+    const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    if (!days[key]) days[key] = {};
+  }
+
+  const tipoList = ['fisico', 'e-sim'].filter(t => tipos.has(t));
+  const dayEntries = Object.entries(days).sort((a, b) => a[0].localeCompare(b[0]));
+  const maxVal = Math.max(...dayEntries.map(([, t]) => Object.values(t).reduce((s, v) => s + v, 0)), 1);
+
+  tipoList.forEach(tipo => {
+    const item = document.createElement('span');
+    item.className = 'chart-legend-item';
+    item.innerHTML = `<span class="chart-legend-dot" style="background:${CHIP_COLORS[tipo]}"></span>${CHIP_LABELS[tipo]}`;
+    legend.appendChild(item);
+  });
+
+  dayEntries.forEach(([dia, tipoCounts]) => {
+    const total = Object.values(tipoCounts).reduce((s, v) => s + v, 0);
+    const wrap = document.createElement('div');
+    wrap.className = 'chart-bar-wrap';
+
+    const valLabel = document.createElement('span');
+    valLabel.className = 'chart-bar-value';
+    valLabel.textContent = total || '';
+
+    const barStack = document.createElement('div');
+    barStack.className = 'chart-bar-stack';
+    barStack.style.height = Math.max((total / maxVal) * 120, 2) + 'px';
+
+    tipoList.forEach(tipo => {
+      const count = tipoCounts[tipo] || 0;
+      if (count === 0) return;
+      const color = CHIP_COLORS[tipo];
+      const seg = document.createElement('div');
+      seg.className = 'chart-bar-seg';
+      seg.style.flex = count;
+      seg.style.background = color;
+
+      const ttHtml = `<span class="tt-color" style="background:${color}"></span>${CHIP_LABELS[tipo]}: <span class="tt-value">${count}</span> (${formatDay(dia)})`;
+      seg.addEventListener('mouseenter', (e) => showTooltip(e, ttHtml));
+      seg.addEventListener('mousemove', moveTooltip);
+      seg.addEventListener('mouseleave', hideTooltip);
+
+      barStack.appendChild(seg);
+    });
+
+    wrap.appendChild(valLabel);
+    wrap.appendChild(barStack);
+    chart.appendChild(wrap);
+
+    const slot = document.createElement('div');
+    slot.className = 'chart-label-slot';
+    slot.dataset.dia = dia;
+    labels.appendChild(slot);
+  });
+
+  const totalDays = dayEntries.length;
+  const step = totalDays <= 15 ? 1 : totalDays <= 30 ? 2 : 3;
+  const slots = labels.querySelectorAll('.chart-label-slot');
+  slots.forEach((slot, i) => {
+    if (i % step === 0 || i === totalDays - 1) {
+      const label = document.createElement('span');
+      label.className = 'chart-bar-label';
+      label.textContent = formatDay(slot.dataset.dia);
+      slot.appendChild(label);
+    }
+  });
+
+  chart.addEventListener('scroll', () => { labels.scrollLeft = chart.scrollLeft; });
+  labels.addEventListener('scroll', () => { chart.scrollLeft = labels.scrollLeft; });
+}
+
 function renderTable() {
   const tbody = $('tableBody');
   tbody.innerHTML = '';
@@ -416,6 +536,18 @@ $('monthNext').addEventListener('click', () => {
   selectedMonth = shiftMonth(selectedMonth, 1);
   updateMonthNav();
   loadTimeline();
+});
+
+$('chipMonthPrev').addEventListener('click', () => {
+  selectedChipMonth = shiftMonth(selectedChipMonth, -1);
+  $('chipMonthLabel').textContent = formatMonthLabel(selectedChipMonth);
+  loadChipTimeline();
+});
+
+$('chipMonthNext').addEventListener('click', () => {
+  selectedChipMonth = shiftMonth(selectedChipMonth, 1);
+  $('chipMonthLabel').textContent = formatMonthLabel(selectedChipMonth);
+  loadChipTimeline();
 });
 
 $('searchInput').addEventListener('input', (e) => {
