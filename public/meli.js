@@ -4,6 +4,7 @@ let allUsers = [];
 let currentFilter = 'all';
 let csvFilter = 'all';
 let searchTerm = '';
+let selectedRefDate = '';
 
 function formatCurrency(n) {
   return Number(n || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -65,6 +66,24 @@ async function loadChipTimeline() {
   renderChipTimeline(data);
 }
 
+function getCurrentRefDate() {
+  const now = new Date();
+  return now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0');
+}
+
+async function loadRefDates() {
+  const res = await fetch('/payroll-ops/api/meli/ref-dates');
+  if (!res.ok) return [];
+  return res.json();
+}
+
+async function loadUsers() {
+  const res = await fetch(`/payroll-ops/api/meli/users?refDate=${selectedRefDate}`);
+  if (!res.ok) throw new Error('API error');
+  allUsers = await res.json();
+  renderTable();
+}
+
 async function loadAll() {
   const isFirstLoad = !loaded;
 
@@ -78,14 +97,34 @@ async function loadAll() {
   }
 
   try {
-    const [summaryRes, usersRes] = await Promise.all([
+    const [summaryRes, refDates] = await Promise.all([
       fetch('/payroll-ops/api/meli/summary'),
-      fetch('/payroll-ops/api/meli/users'),
+      loadRefDates(),
     ]);
 
-    if (!summaryRes.ok || !usersRes.ok) throw new Error('API error');
-
+    if (!summaryRes.ok) throw new Error('API error');
     const summary = await summaryRes.json();
+
+    // Populate refDate select
+    if (isFirstLoad && refDates.length > 0) {
+      const select = $('refDateSelect');
+      select.innerHTML = '';
+      const currentRef = getCurrentRefDate();
+      refDates.forEach(rd => {
+        const opt = document.createElement('option');
+        opt.value = rd;
+        const y = rd.substring(0, 4);
+        const m = rd.substring(4, 6);
+        const names = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+        opt.textContent = names[Number(m) - 1] + '/' + y;
+        select.appendChild(opt);
+      });
+      selectedRefDate = refDates.includes(currentRef) ? currentRef : refDates[0];
+      select.value = selectedRefDate;
+    }
+
+    const usersRes = await fetch(`/payroll-ops/api/meli/users?refDate=${selectedRefDate}`);
+    if (!usersRes.ok) throw new Error('API error');
     allUsers = await usersRes.json();
 
     renderSummary(summary);
@@ -486,14 +525,20 @@ function renderTable() {
   $('resultCount').textContent = `${filtered.length} resultado${filtered.length !== 1 ? 's' : ''}`;
 
   if (filtered.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="15" style="text-align:center;color:var(--text-muted)">Nenhum usuario encontrado</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="14" style="text-align:center;color:var(--text-muted)">Nenhum usuario encontrado</td></tr>';
     return;
   }
 
-  const nivelBdLabel = (v) => {
-    if (!v) return '-';
-    const map = { meliprata: 'Prata', meliouro: 'Ouro', meliplatina: 'Platina' };
-    return map[v] || v;
+  const nivelLabel = (levelName) => {
+    if (!levelName) return '-';
+    const map = { Silver: 'Prata', Gold: 'Ouro', Platinum: 'Platina' };
+    return map[levelName] || levelName;
+  };
+
+  const movLabel = (mov) => {
+    if (!mov) return '-';
+    const map = { Up: 'Subiu', Down: 'Desceu', Flat: 'Manteve' };
+    return map[mov] || mov;
   };
 
   filtered.forEach(u => {
@@ -501,13 +546,14 @@ function renderTable() {
     const statusColor = u.status === 'enabled' ? 'var(--green)' : 'var(--text-muted)';
     const paymentLabel = u.paymentMethod === 'payroll' ? 'Folha' : (u.paymentMethod || '-');
     const naBaseColor = u.naBase === 'Sim' ? 'var(--green)' : 'var(--orange)';
-    const bdLevel = nivelBdLabel(u.nivelBD);
-    const csvLevel = u.csvLevelName || '-';
-    const movColor = u.csvMovement === 'Up' ? 'var(--green)' : u.csvMovement === 'Down' ? '#ef4444' : 'var(--text-muted)';
+    const nivel = nivelLabel(u.nivelMeli);
+    const movColor = u.movimento === 'Up' ? 'var(--green)' : u.movimento === 'Down' ? '#ef4444' : u.movimento === 'Flat' ? 'var(--blue)' : 'var(--text-muted)';
+    const isDup = u.dupCount > 1;
+    const dupBadge = isDup ? ` <span title="${u.dupCount} registros para este identifier neste refDate" style="background:#ef4444;color:#fff;font-size:10px;padding:1px 5px;border-radius:8px;cursor:help">DUP ${u.dupCount}</span>` : '';
 
     tr.innerHTML = `
       <td>${u.idUser}</td>
-      <td>${u.idMotorista || '-'}</td>
+      <td>${u.idMotorista || '-'}${dupBadge}</td>
       <td><span style="color:${u.tipo === 'Titular' ? 'var(--blue)' : 'var(--purple)'}">${u.tipo}</span></td>
       <td><span style="color:${statusColor}">${u.status || '-'}</span></td>
       <td>${formatDate(u.dataCadastro)}</td>
@@ -516,9 +562,8 @@ function renderTable() {
       <td>${paymentLabel}</td>
       <td>${u.companyName || '-'}</td>
       <td><span style="color:${naBaseColor};font-weight:600">${u.naBase}</span></td>
-      <td>${bdLevel}</td>
-      <td>${csvLevel}</td>
-      <td><span style="color:${movColor}">${u.csvMovement || '-'}</span></td>
+      <td>${nivel}</td>
+      <td><span style="color:${movColor}">${movLabel(u.movimento)}</span></td>
       <td>${u.imsi || '-'}</td>
       <td>${u.iccid || '-'}</td>
     `;
@@ -548,6 +593,11 @@ $('chipMonthNext').addEventListener('click', () => {
   selectedChipMonth = shiftMonth(selectedChipMonth, 1);
   $('chipMonthLabel').textContent = formatMonthLabel(selectedChipMonth);
   loadChipTimeline();
+});
+
+$('refDateSelect').addEventListener('change', (e) => {
+  selectedRefDate = e.target.value;
+  loadUsers();
 });
 
 $('searchInput').addEventListener('input', (e) => {

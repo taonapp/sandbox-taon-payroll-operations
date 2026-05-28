@@ -170,8 +170,12 @@
               </div>
               <div class="filter-group">
                 <button class="filter-btn active" data-csv="all">Todos</button>
-                <button class="filter-btn" data-csv="Sim">Na Base CSV</button>
+                <button class="filter-btn" data-csv="Sim">Na Base Meli</button>
                 <button class="filter-btn" data-csv="Nao">Fora da Base</button>
+              </div>
+              <div class="filter-group">
+                <span style="color:var(--text-muted);font-size:12px;margin-right:4px">Ref:</span>
+                <select id="refDateSelect" class="filter-select"></select>
               </div>
               <button class="export-btn" id="exportIds">Exportar IDs</button>
               <span class="result-count" id="resultCount"></span>
@@ -190,9 +194,8 @@
                   <th>Valor</th>
                   <th>Pagamento</th>
                   <th>Empresa</th>
-                  <th>Na Base CSV</th>
-                  <th>Nivel BD</th>
-                  <th>Nivel CSV</th>
+                  <th>Na Base</th>
+                  <th>Nivel</th>
                   <th>Movimento</th>
                   <th>IMSI</th>
                   <th>ICCID</th>

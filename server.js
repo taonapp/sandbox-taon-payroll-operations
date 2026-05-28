@@ -19,23 +19,6 @@ const pool = mysql.createPool({
   queueLimit: 0,
 });
 
-// Parse Meli CSV (Base_TaOn)
-const meliCsvMap = new Map();
-try {
-  const csvPath = path.join(process.env.USERPROFILE || process.env.HOME, 'Downloads', 'Base_TaOn_202605.csv');
-  const lines = fs.readFileSync(csvPath, 'utf-8').trim().split('\n');
-  for (let i = 1; i < lines.length; i++) {
-    const [driverId, levelNum, levelName, movement] = lines[i].split(',');
-    meliCsvMap.set(driverId.trim(), {
-      csvLevelNum: Number(levelNum),
-      csvLevelName: levelName.trim(),
-      csvMovement: movement.trim(),
-    });
-  }
-  console.log(`Meli CSV loaded: ${meliCsvMap.size} drivers`);
-} catch (err) {
-  console.warn('Could not load Meli CSV:', err.message);
-}
 
 const PREFIX = '/payroll-ops';
 const apiRouter = express.Router();
@@ -1230,9 +1213,24 @@ apiRouter.get('/api/meli/chips-timeline', async (req, res) => {
   }
 });
 
+// refDates disponíveis na tabela Meli
+apiRouter.get('/api/meli/ref-dates', async (req, res) => {
+  try {
+    const [rows] = await pool.query(`
+      SELECT DISTINCT refDate FROM Meli WHERE refDate IS NOT NULL ORDER BY refDate DESC
+    `);
+    res.json(rows.map(r => r.refDate));
+  } catch (err) {
+    console.error('Meli ref-dates error:', err);
+    res.status(500).json({ error: 'Erro ao consultar refDates' });
+  }
+});
+
 // Lista de usuários Meli
 apiRouter.get('/api/meli/users', async (req, res) => {
   try {
+    const refDate = req.query.refDate || null;
+
     const [rows] = await pool.query(`
       WITH meli_users AS (
         SELECT DISTINCT mc.idUser
@@ -1256,6 +1254,19 @@ apiRouter.get('/api/meli/users', async (req, res) => {
           LEFT JOIN Products p ON p.id = rpc.idProduct
           LEFT JOIN RecurringPurchasesConfigStatus rpcs ON rpcs.id = rpc.idStatus
         ) x WHERE rn = 1
+      ),
+      meli_ref AS (
+        SELECT identifier, level, moviment, currentLevelNumber, currentLevelName,
+          COUNT(*) AS dupCount
+        FROM Meli
+        WHERE refDate = ?
+        GROUP BY identifier, level, moviment, currentLevelNumber, currentLevelName
+      ),
+      meli_dup AS (
+        SELECT identifier, COUNT(*) AS totalEntries
+        FROM Meli
+        WHERE refDate = ?
+        GROUP BY identifier
       )
       SELECT
         u.id AS idUser,
@@ -1268,7 +1279,12 @@ apiRouter.get('/api/meli/users', async (req, res) => {
         lr.productName,
         c.companyName,
         um.value AS idMotorista,
-        ml.level AS nivelBD,
+        mr.level AS nivelBD,
+        mr.currentLevelName AS nivelMeli,
+        mr.currentLevelNumber AS nivelNumero,
+        mr.moviment AS movimento,
+        CASE WHEN mr.identifier IS NOT NULL THEN 'Sim' ELSE 'Nao' END AS naBase,
+        COALESCE(md.totalEntries, 0) AS dupCount,
         GROUP_CONCAT(DISTINCT sc.imsi ORDER BY sc.id SEPARATOR ', ') AS imsi,
         GROUP_CONCAT(DISTINCT sc.iccid ORDER BY sc.id SEPARATOR ', ') AS iccid,
         COUNT(DISTINCT sc.id) AS totalChips
@@ -1277,30 +1293,18 @@ apiRouter.get('/api/meli/users', async (req, res) => {
       LEFT JOIN latest_rpc lr ON lr.idUser = u.id
       LEFT JOIN Company c ON c.id = lr.idCompany
       LEFT JOIN UsersMetadata um ON um.idUser = u.id AND um.name = 'identifier'
-      LEFT JOIN (
-        SELECT m1.identifier, m1.level
-        FROM Meli m1
-        INNER JOIN (SELECT identifier, MAX(id) AS maxId FROM Meli GROUP BY identifier) m2 ON m1.id = m2.maxId
-      ) ml ON ml.identifier = um.value
+      LEFT JOIN meli_ref mr ON mr.identifier = um.value
+      LEFT JOIN meli_dup md ON md.identifier = um.value
       LEFT JOIN SimCards sc ON sc.idUser = u.id
       WHERE u.internalUser = 0
       GROUP BY u.id, u.cdate, u.status, u.idUserParent,
         lr.amount, lr.paymentMethod, lr.statusRecorrencia, lr.productName,
-        c.companyName, um.value, ml.level
+        c.companyName, um.value, mr.level, mr.currentLevelName, mr.currentLevelNumber,
+        mr.moviment, mr.identifier, md.totalEntries
       ORDER BY u.cdate DESC
-    `);
+    `, [refDate, refDate]);
 
-    // Enrich with CSV data
-    const enriched = rows.map(r => {
-      const obj = JSON.parse(JSON.stringify(r));
-      const csv = meliCsvMap.get(String(obj.idMotorista)) || {};
-      obj.csvLevelName = csv.csvLevelName || null;
-      obj.csvMovement = csv.csvMovement || null;
-      obj.naBase = csv.csvLevelName ? 'Sim' : 'Nao';
-      return obj;
-    });
-
-    res.json(enriched);
+    res.json(rows);
   } catch (err) {
     console.error('Meli users error:', err);
     res.status(500).json({ error: 'Erro ao consultar usuários Meli' });
