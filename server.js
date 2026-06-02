@@ -746,36 +746,42 @@ apiRouter.get('/api/activations', async (req, res) => {
     let params = [];
 
     if (month && /^\d{4}-\d{2}$/.test(month)) {
-      dateFilter = 'AND DATE(first_payroll.cdate) >= ? AND DATE(first_payroll.cdate) < DATE_ADD(?, INTERVAL 1 MONTH)';
+      dateFilter = 'AND DATE(fp.cdate) >= ? AND DATE(fp.cdate) < DATE_ADD(?, INTERVAL 1 MONTH)';
       const startDate = `${month}-01`;
       params = [startDate, startDate];
     } else {
-      // Default: último mês
-      dateFilter = 'AND DATE(first_payroll.cdate) >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), \'%Y-%m-01\') AND DATE(first_payroll.cdate) < DATE_FORMAT(CURDATE(), \'%Y-%m-01\')';
+      dateFilter = 'AND DATE(fp.cdate) >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), \'%Y-%m-01\') AND DATE(fp.cdate) < DATE_FORMAT(CURDATE(), \'%Y-%m-01\')';
     }
 
     const [summary] = await pool.query(`
-      WITH first_payroll AS (
+      WITH hagana_users AS (
+        SELECT DISTINCT mc.idUser
+        FROM MgmChain mc
+        WHERE mc.mgmInvCode IN ('HAGANADFGERAL', 'HAGANADF')
+          AND mc.nivel = 1
+      ),
+      first_payroll AS (
         SELECT
           rpc.idUser,
           MIN(rpc.cdate) AS cdate
         FROM RecurringPurchasesConfig rpc
         INNER JOIN Products p ON p.id = rpc.idProduct
+        INNER JOIN hagana_users hu ON hu.idUser = rpc.idUser
         WHERE rpc.paymentMethod = 'payroll'
           AND rpc.idStatus = 1
           AND p.\`type\` LIKE 'main%'
         GROUP BY rpc.idUser
       )
       SELECT
-        DATE_FORMAT(first_payroll.cdate, '%Y-%m-%d') AS dia,
+        DATE_FORMAT(fp.cdate, '%Y-%m-%d') AS dia,
         COUNT(*) AS total,
         SUM(CASE WHEN u.idUserParent IS NULL THEN 1 ELSE 0 END) AS titulares,
         SUM(CASE WHEN u.idUserParent IS NOT NULL THEN 1 ELSE 0 END) AS dependentes
-      FROM first_payroll
-      INNER JOIN Users u ON u.id = first_payroll.idUser
+      FROM first_payroll fp
+      INNER JOIN Users u ON u.id = fp.idUser
       WHERE u.internalUser = 0
         ${dateFilter}
-      GROUP BY DATE(first_payroll.cdate)
+      GROUP BY DATE(fp.cdate)
       ORDER BY dia ASC
     `, params);
 
@@ -795,12 +801,19 @@ apiRouter.get('/api/activations/details', async (req, res) => {
     }
 
     const [rows] = await pool.query(`
-      WITH first_payroll AS (
+      WITH hagana_users AS (
+        SELECT DISTINCT mc.idUser
+        FROM MgmChain mc
+        WHERE mc.mgmInvCode IN ('HAGANADFGERAL', 'HAGANADF')
+          AND mc.nivel = 1
+      ),
+      first_payroll AS (
         SELECT
           rpc.idUser,
           MIN(rpc.cdate) AS cdate
         FROM RecurringPurchasesConfig rpc
         INNER JOIN Products p ON p.id = rpc.idProduct
+        INNER JOIN hagana_users hu ON hu.idUser = rpc.idUser
         WHERE rpc.paymentMethod = 'payroll'
           AND rpc.idStatus = 1
           AND p.\`type\` LIKE 'main%'
@@ -830,21 +843,21 @@ apiRouter.get('/api/activations/details', async (req, res) => {
         (
           SELECT mc.mgmInvCode
           FROM MgmChain mc
-          WHERE mc.idUser = first_payroll.idUser
+          WHERE mc.idUser = fp.idUser
             AND mc.nivel = 1
           LIMIT 1
         ) AS codigo,
         lc.amount,
         lc.idCompany,
         c.companyName,
-        first_payroll.cdate AS dataAtivacao
-      FROM first_payroll
-      INNER JOIN Users u ON u.id = first_payroll.idUser
-      INNER JOIN latest_config lc ON lc.idUser = first_payroll.idUser
+        fp.cdate AS dataAtivacao
+      FROM first_payroll fp
+      INNER JOIN Users u ON u.id = fp.idUser
+      INNER JOIN latest_config lc ON lc.idUser = fp.idUser
       LEFT JOIN Company c ON c.id = lc.idCompany
       WHERE u.internalUser = 0
-        AND DATE(first_payroll.cdate) = ?
-      ORDER BY first_payroll.cdate ASC
+        AND DATE(fp.cdate) = ?
+      ORDER BY fp.cdate ASC
     `, [date]);
 
     res.json(rows);
@@ -1140,6 +1153,42 @@ apiRouter.get('/api/meli/chips', async (req, res) => {
   }
 });
 
+// Chips detalhados de um spot/company
+apiRouter.get('/api/stock/spot-chips', async (req, res) => {
+  try {
+    const { idCompany, idSpot } = req.query;
+    if (!idCompany) return res.json([]);
+
+    const spotFilter = idSpot === '0'
+      ? 'AND sc.idSpot IS NULL'
+      : idSpot ? 'AND sc.idSpot = ?' : '';
+    const params = [idCompany];
+    if (idSpot && idSpot !== '0') params.push(idSpot);
+
+    const [rows] = await pool.query(`
+      SELECT
+        sc.id,
+        sc.imsi,
+        sc.iccid,
+        sc.\`type\` AS tipoChip,
+        sc.idStatus,
+        sc.idUser,
+        u.name AS userName,
+        sc.qrcodeEsim,
+        DATE_FORMAT(DATE_SUB(sc.vdate, INTERVAL 3 HOUR), '%Y-%m-%dT%H:%i:%s') AS vdate,
+        DATE_FORMAT(DATE_SUB(sc.cdate, INTERVAL 3 HOUR), '%Y-%m-%dT%H:%i:%s') AS cdate
+      FROM SimCards sc
+      LEFT JOIN Users u ON u.id = sc.idUser
+      WHERE sc.idCompany = ? ${spotFilter}
+      ORDER BY sc.vdate DESC
+    `, params);
+    res.json(rows);
+  } catch (err) {
+    console.error('Spot chips error:', err);
+    res.status(500).json({ error: 'Erro ao consultar chips do spot' });
+  }
+});
+
 // Ativações Meli por dia (timeline com subdivisão por plano)
 apiRouter.get('/api/meli/timeline', async (req, res) => {
   try {
@@ -1213,6 +1262,63 @@ apiRouter.get('/api/meli/chips-timeline', async (req, res) => {
   }
 });
 
+// Evolução da base Meli entre refDates
+apiRouter.get('/api/meli/evolution', async (req, res) => {
+  try {
+    const refDate = req.query.refDate || null;
+    if (!refDate) return res.json({});
+
+    // Calcular refDate anterior
+    const y = parseInt(refDate.substring(0, 4));
+    const m = parseInt(refDate.substring(4, 6));
+    const prevDate = m === 1
+      ? `${y - 1}12`
+      : `${y}${String(m - 1).padStart(2, '0')}`;
+
+    const [rows] = await pool.query(`
+      WITH meli_users AS (
+        SELECT DISTINCT mc.idUser
+        FROM MgmChain mc
+        WHERE mc.mgmInvCode = 'MELI26'
+          AND mc.nivel = 1
+      ),
+      identifiers AS (
+        SELECT mu.idUser, um.value AS identifier
+        FROM meli_users mu
+        INNER JOIN Users u ON u.id = mu.idUser
+        LEFT JOIN UsersMetadata um ON um.idUser = u.id AND um.name = 'identifier'
+        WHERE u.internalUser = 0
+      ),
+      curr AS (
+        SELECT DISTINCT identifier FROM Meli WHERE refDate = ?
+      ),
+      prev AS (
+        SELECT DISTINCT identifier FROM Meli WHERE refDate = ?
+      )
+      SELECT
+        COUNT(DISTINCT i.idUser) AS totalUsuarios,
+        COUNT(DISTINCT CASE WHEN i.identifier IS NOT NULL AND c.identifier IS NOT NULL THEN i.idUser END) AS naBaseAtual,
+        COUNT(DISTINCT CASE WHEN i.identifier IS NOT NULL AND p.identifier IS NOT NULL THEN i.idUser END) AS naBaseAnterior,
+        COUNT(DISTINCT CASE WHEN i.identifier IS NOT NULL AND c.identifier IS NOT NULL AND p.identifier IS NOT NULL THEN i.idUser END) AS permaneceramNaBase,
+        COUNT(DISTINCT CASE WHEN i.identifier IS NOT NULL AND c.identifier IS NOT NULL AND p.identifier IS NULL THEN i.idUser END) AS entraramNaBase,
+        COUNT(DISTINCT CASE WHEN i.identifier IS NOT NULL AND c.identifier IS NULL AND p.identifier IS NOT NULL THEN i.idUser END) AS sairamDaBase,
+        COUNT(DISTINCT CASE WHEN i.identifier IS NOT NULL AND c.identifier IS NULL AND p.identifier IS NULL THEN i.idUser END) AS nuncaNaBase,
+        COUNT(DISTINCT CASE WHEN i.identifier IS NULL THEN i.idUser END) AS semIdentifier
+      FROM identifiers i
+      LEFT JOIN curr c ON c.identifier = i.identifier
+      LEFT JOIN prev p ON p.identifier = i.identifier
+    `, [refDate, prevDate]);
+
+    const r = rows[0];
+    r.refDate = refDate;
+    r.prevRefDate = prevDate;
+    res.json(r);
+  } catch (err) {
+    console.error('Meli evolution error:', err);
+    res.status(500).json({ error: 'Erro ao consultar evolução Meli' });
+  }
+});
+
 // refDates disponíveis na tabela Meli
 apiRouter.get('/api/meli/ref-dates', async (req, res) => {
   try {
@@ -1230,6 +1336,13 @@ apiRouter.get('/api/meli/ref-dates', async (req, res) => {
 apiRouter.get('/api/meli/users', async (req, res) => {
   try {
     const refDate = req.query.refDate || null;
+
+    // Calcular refDate anterior
+    const y = parseInt(refDate.substring(0, 4));
+    const m = parseInt(refDate.substring(4, 6));
+    const prevRefDate = m === 1
+      ? `${y - 1}12`
+      : `${y}${String(m - 1).padStart(2, '0')}`;
 
     const [rows] = await pool.query(`
       WITH meli_users AS (
@@ -1256,17 +1369,23 @@ apiRouter.get('/api/meli/users', async (req, res) => {
         ) x WHERE rn = 1
       ),
       meli_ref AS (
-        SELECT identifier, level, moviment, currentLevelNumber, currentLevelName,
-          COUNT(*) AS dupCount
-        FROM Meli
-        WHERE refDate = ?
-        GROUP BY identifier, level, moviment, currentLevelNumber, currentLevelName
+        SELECT identifier, level, moviment, currentLevelNumber, currentLevelName, totalEntries
+        FROM (
+          SELECT m.*,
+            COUNT(*) OVER (PARTITION BY m.identifier) AS totalEntries,
+            ROW_NUMBER() OVER (PARTITION BY m.identifier ORDER BY m.id DESC) AS rn
+          FROM Meli m
+          WHERE m.refDate = ?
+        ) x WHERE rn = 1
       ),
-      meli_dup AS (
-        SELECT identifier, COUNT(*) AS totalEntries
-        FROM Meli
-        WHERE refDate = ?
-        GROUP BY identifier
+      meli_prev AS (
+        SELECT identifier, currentLevelName AS prevLevelName
+        FROM (
+          SELECT m.*,
+            ROW_NUMBER() OVER (PARTITION BY m.identifier ORDER BY m.id DESC) AS rn
+          FROM Meli m
+          WHERE m.refDate = ?
+        ) x WHERE rn = 1
       )
       SELECT
         u.id AS idUser,
@@ -1284,30 +1403,168 @@ apiRouter.get('/api/meli/users', async (req, res) => {
         mr.currentLevelNumber AS nivelNumero,
         mr.moviment AS movimento,
         CASE WHEN mr.identifier IS NOT NULL THEN 'Sim' ELSE 'Nao' END AS naBase,
-        COALESCE(md.totalEntries, 0) AS dupCount,
+        CASE WHEN mp.identifier IS NOT NULL THEN 'Sim' ELSE 'Nao' END AS naBaseAnterior,
+        mp.prevLevelName,
+        CASE
+          WHEN um.value IS NULL THEN 'sem-id'
+          WHEN mr.identifier IS NOT NULL AND mp.identifier IS NOT NULL THEN 'permaneceu'
+          WHEN mr.identifier IS NOT NULL AND mp.identifier IS NULL THEN 'entrou'
+          WHEN mr.identifier IS NULL AND mp.identifier IS NOT NULL THEN 'saiu'
+          ELSE 'nunca'
+        END AS evolucao,
+        COALESCE(mr.totalEntries, 0) AS dupCount,
+        umChip.value AS getTypeChip,
         GROUP_CONCAT(DISTINCT sc.imsi ORDER BY sc.id SEPARATOR ', ') AS imsi,
         GROUP_CONCAT(DISTINCT sc.iccid ORDER BY sc.id SEPARATOR ', ') AS iccid,
+        GROUP_CONCAT(DISTINCT sc.\`type\` ORDER BY sc.id SEPARATOR ', ') AS tipoChip,
         COUNT(DISTINCT sc.id) AS totalChips
       FROM meli_users mu
       INNER JOIN Users u ON u.id = mu.idUser
       LEFT JOIN latest_rpc lr ON lr.idUser = u.id
       LEFT JOIN Company c ON c.id = lr.idCompany
       LEFT JOIN UsersMetadata um ON um.idUser = u.id AND um.name = 'identifier'
+      LEFT JOIN UsersMetadata umChip ON umChip.idUser = u.id AND umChip.name = 'getTypeChip'
       LEFT JOIN meli_ref mr ON mr.identifier = um.value
-      LEFT JOIN meli_dup md ON md.identifier = um.value
+      LEFT JOIN meli_prev mp ON mp.identifier = um.value
       LEFT JOIN SimCards sc ON sc.idUser = u.id
       WHERE u.internalUser = 0
       GROUP BY u.id, u.cdate, u.status, u.idUserParent,
         lr.amount, lr.paymentMethod, lr.statusRecorrencia, lr.productName,
-        c.companyName, um.value, mr.level, mr.currentLevelName, mr.currentLevelNumber,
-        mr.moviment, mr.identifier, md.totalEntries
+        c.companyName, um.value, umChip.value, mr.level, mr.currentLevelName, mr.currentLevelNumber,
+        mr.moviment, mr.identifier, mr.totalEntries, mp.identifier, mp.prevLevelName
       ORDER BY u.cdate DESC
-    `, [refDate, refDate]);
+    `, [refDate, prevRefDate]);
 
     res.json(rows);
   } catch (err) {
     console.error('Meli users error:', err);
     res.status(500).json({ error: 'Erro ao consultar usuários Meli' });
+  }
+});
+
+// Estoque — lista de companies com chips
+apiRouter.get('/api/stock/companies', async (req, res) => {
+  try {
+    const [rows] = await pool.query(`
+      SELECT sc.idCompany, c.companyName, COUNT(*) AS total
+      FROM SimCards sc
+      INNER JOIN Company c ON c.id = sc.idCompany
+      GROUP BY sc.idCompany
+      ORDER BY c.companyName ASC
+    `);
+    res.json(rows);
+  } catch (err) {
+    console.error('Stock companies error:', err);
+    res.status(500).json({ error: 'Erro ao consultar empresas' });
+  }
+});
+
+// Estoque — dashboard de uma company
+apiRouter.get('/api/stock/company/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+
+    const [[summary], spots, timeline] = await Promise.all([
+      pool.query(`
+        SELECT
+          COUNT(*) AS total,
+          SUM(CASE WHEN sc.idUser IS NULL THEN 1 ELSE 0 END) AS disponivel,
+          SUM(CASE WHEN sc.idUser IS NOT NULL THEN 1 ELSE 0 END) AS associado,
+          SUM(CASE WHEN sc.\`type\` = 'fisico' THEN 1 ELSE 0 END) AS fisico,
+          SUM(CASE WHEN sc.\`type\` = 'e-sim' THEN 1 ELSE 0 END) AS esim,
+          SUM(CASE WHEN sc.idUser IS NULL AND sc.\`type\` = 'fisico' THEN 1 ELSE 0 END) AS fisicoDisp,
+          SUM(CASE WHEN sc.idUser IS NULL AND sc.\`type\` = 'e-sim' THEN 1 ELSE 0 END) AS esimDisp,
+          SUM(CASE WHEN sc.idUser IS NOT NULL AND sc.\`type\` = 'fisico' THEN 1 ELSE 0 END) AS fisicoAssoc,
+          SUM(CASE WHEN sc.idUser IS NOT NULL AND sc.\`type\` = 'e-sim' THEN 1 ELSE 0 END) AS esimAssoc
+        FROM SimCards sc
+        WHERE sc.idCompany = ?
+      `, [id]),
+      pool.query(`
+        SELECT
+          COALESCE(sc.idSpot, 0) AS idSpot,
+          COALESCE(s.name, 'Sem spot') AS spotName,
+          ps.name AS parentSpotName,
+          COUNT(*) AS total,
+          SUM(CASE WHEN sc.idUser IS NULL THEN 1 ELSE 0 END) AS disponivel,
+          SUM(CASE WHEN sc.idUser IS NOT NULL THEN 1 ELSE 0 END) AS associado,
+          SUM(CASE WHEN sc.\`type\` = 'fisico' THEN 1 ELSE 0 END) AS fisico,
+          SUM(CASE WHEN sc.\`type\` = 'e-sim' THEN 1 ELSE 0 END) AS esim,
+          SUM(CASE WHEN sc.idUser IS NULL AND sc.\`type\` = 'fisico' THEN 1 ELSE 0 END) AS fisicoDisp,
+          SUM(CASE WHEN sc.idUser IS NULL AND sc.\`type\` = 'e-sim' THEN 1 ELSE 0 END) AS esimDisp
+        FROM SimCards sc
+        LEFT JOIN Spots s ON s.id = sc.idSpot
+        LEFT JOIN Spots ps ON ps.id = s.idParent
+        WHERE sc.idCompany = ?
+        GROUP BY sc.idSpot
+        ORDER BY SUM(CASE WHEN sc.idUser IS NULL THEN 1 ELSE 0 END) DESC
+      `, [id]),
+      pool.query(`
+        SELECT
+          DATE_FORMAT(DATE_SUB(sc.vdate, INTERVAL 3 HOUR), '%Y-%m-%d') AS dia,
+          sc.\`type\` AS tipoChip,
+          COUNT(*) AS total
+        FROM SimCards sc
+        WHERE sc.idCompany = ? AND sc.idUser IS NOT NULL
+        GROUP BY dia, sc.\`type\`
+        ORDER BY dia ASC
+      `, [id]),
+    ]);
+
+    res.json({
+      summary: summary[0],
+      spots: spots[0],
+      timeline: timeline[0],
+    });
+  } catch (err) {
+    console.error('Stock company detail error:', err);
+    res.status(500).json({ error: 'Erro ao consultar estoque da empresa' });
+  }
+});
+
+// Pendentes de chip (escolheram physical ou esim mas sem SimCard)
+apiRouter.get('/api/meli/pending-chips', async (req, res) => {
+  try {
+    const chipType = req.query.type || 'physical';
+    const [rows] = await pool.query(`
+      WITH meli_users AS (
+        SELECT DISTINCT mc.idUser
+        FROM MgmChain mc
+        WHERE mc.mgmInvCode = 'MELI26'
+          AND mc.nivel = 1
+      )
+      SELECT
+        u.id AS idUser,
+        u.name,
+        u.status,
+        u.cdate AS dataCadastro,
+        CASE WHEN u.idUserParent IS NULL THEN 'Titular' ELSE 'Dependente' END AS tipo,
+        um.value AS idMotorista,
+        lr.productName,
+        lr.amount,
+        c.companyName
+      FROM meli_users mu
+      INNER JOIN Users u ON u.id = mu.idUser
+      INNER JOIN UsersMetadata umChip ON umChip.idUser = u.id AND umChip.name = 'getTypeChip' AND umChip.value = ?
+      LEFT JOIN UsersMetadata um ON um.idUser = u.id AND um.name = 'identifier'
+      LEFT JOIN (
+        SELECT *
+        FROM (
+          SELECT rpc.idUser, p.name AS productName, rpc.amount, rpc.idCompany,
+            ROW_NUMBER() OVER (PARTITION BY rpc.idUser ORDER BY rpc.cdate DESC) AS rn
+          FROM RecurringPurchasesConfig rpc
+          LEFT JOIN Products p ON p.id = rpc.idProduct
+          WHERE rpc.idStatus = 1
+        ) x WHERE rn = 1
+      ) lr ON lr.idUser = u.id
+      LEFT JOIN Company c ON c.id = lr.idCompany
+      WHERE u.internalUser = 0
+        AND NOT EXISTS (SELECT 1 FROM SimCards sc WHERE sc.idUser = u.id)
+      ORDER BY u.cdate DESC
+    `, [chipType]);
+    res.json(rows);
+  } catch (err) {
+    console.error('Meli pending chips error:', err);
+    res.status(500).json({ error: 'Erro ao consultar pendentes de chip' });
   }
 });
 

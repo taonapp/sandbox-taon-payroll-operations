@@ -3,6 +3,7 @@ const $ = (id) => document.getElementById(id);
 let allUsers = [];
 let currentFilter = 'all';
 let csvFilter = 'all';
+let evoFilter = 'all';
 let searchTerm = '';
 let selectedRefDate = '';
 
@@ -78,10 +79,61 @@ async function loadRefDates() {
 }
 
 async function loadUsers() {
-  const res = await fetch(`/payroll-ops/api/meli/users?refDate=${selectedRefDate}`);
-  if (!res.ok) throw new Error('API error');
-  allUsers = await res.json();
+  const [usersRes, evoRes] = await Promise.all([
+    fetch(`/payroll-ops/api/meli/users?refDate=${selectedRefDate}`),
+    fetch(`/payroll-ops/api/meli/evolution?refDate=${selectedRefDate}`),
+  ]);
+  if (!usersRes.ok) throw new Error('API error');
+  allUsers = await usersRes.json();
+  const evolution = evoRes.ok ? await evoRes.json() : null;
+  renderEvolution(evolution);
   renderTable();
+}
+
+async function loadPendingChips() {
+  const [physRes, esimRes] = await Promise.all([
+    fetch('/payroll-ops/api/meli/pending-chips?type=physical'),
+    fetch('/payroll-ops/api/meli/pending-chips?type=esim'),
+  ]);
+
+  if (physRes.ok) renderPendingSection(await physRes.json(), 'pendingChipsSection', 'pendingTableBody', 'pendingCount');
+  if (esimRes.ok) renderPendingSection(await esimRes.json(), 'pendingEsimSection', 'pendingEsimTableBody', 'pendingEsimCount');
+}
+
+function renderPendingSection(rows, sectionId, tbodyId, countId) {
+  const section = $(sectionId);
+  const tbody = $(tbodyId);
+
+  if (rows.length === 0) {
+    section.style.display = 'none';
+    return;
+  }
+
+  section.style.display = '';
+  $(countId).textContent = rows.length + ' pendente' + (rows.length !== 1 ? 's' : '');
+
+  tbody.innerHTML = '';
+  const now = new Date();
+  rows.forEach(r => {
+    const tr = document.createElement('tr');
+    const cadastro = new Date(r.dataCadastro);
+    const diffMs = now.getTime() - cadastro.getTime();
+    const dias = Math.max(0, Math.floor(diffMs / 86400000));
+    const diasClass = dias >= 7 ? 'danger' : dias >= 3 ? 'warn' : '';
+    tr.innerHTML = `
+      <td>${r.idUser}</td>
+      <td>${r.name || '-'}</td>
+      <td>${r.idMotorista || '-'}</td>
+      <td><span style="color:${r.tipo === 'Titular' ? 'var(--blue)' : 'var(--purple)'}">${r.tipo}</span></td>
+      <td><span style="color:${r.status === 'enabled' ? 'var(--green)' : 'var(--text-muted)'}">${r.status || '-'}</span></td>
+      <td>${formatDate(r.dataCadastro)}</td>
+      <td>${r.productName || '-'}</td>
+      <td>${r.amount ? formatCurrency(r.amount) : '-'}</td>
+      <td>${r.companyName || '-'}</td>
+      <td><span class="days-pending ${diasClass}">${dias}d</span></td>
+    `;
+    tbody.appendChild(tr);
+  });
 }
 
 async function loadAll() {
@@ -123,13 +175,18 @@ async function loadAll() {
       select.value = selectedRefDate;
     }
 
-    const usersRes = await fetch(`/payroll-ops/api/meli/users?refDate=${selectedRefDate}`);
+    const [usersRes, evolutionRes] = await Promise.all([
+      fetch(`/payroll-ops/api/meli/users?refDate=${selectedRefDate}`),
+      fetch(`/payroll-ops/api/meli/evolution?refDate=${selectedRefDate}`),
+    ]);
     if (!usersRes.ok) throw new Error('API error');
     allUsers = await usersRes.json();
+    const evolution = evolutionRes.ok ? await evolutionRes.json() : null;
 
     renderSummary(summary);
+    renderEvolution(evolution);
     renderPieChart(allUsers);
-    await Promise.all([loadTimeline(), loadChipTimeline()]);
+    await Promise.all([loadTimeline(), loadChipTimeline(), loadPendingChips()]);
     renderTable();
 
     if (isFirstLoad) {
@@ -172,6 +229,37 @@ function renderSummary(s) {
   const chipsApn = Number(s.chipsApn) || 0;
   $('chipsApn').textContent = chipsApn.toLocaleString('pt-BR');
   $('apnPct').textContent = totalChips > 0 ? ((chipsApn / totalChips) * 100).toFixed(1) + '% dos chips' : '';
+}
+
+function formatRefDateLabel(rd) {
+  if (!rd) return '-';
+  const y = rd.substring(0, 4);
+  const m = rd.substring(4, 6);
+  const names = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+  return names[Number(m) - 1] + '/' + y;
+}
+
+function renderEvolution(ev) {
+  if (!ev || !ev.refDate) {
+    $('evolutionSection').style.display = 'none';
+    return;
+  }
+  $('evolutionSection').style.display = '';
+
+  const prevLabel = formatRefDateLabel(ev.prevRefDate);
+  const currLabel = formatRefDateLabel(ev.refDate);
+
+  $('evPermaneceram').textContent = (Number(ev.permaneceramNaBase) || 0).toLocaleString('pt-BR');
+  $('evPermaneceramSub').textContent = `${prevLabel} → ${currLabel}`;
+
+  $('evEntraram').textContent = (Number(ev.entraramNaBase) || 0).toLocaleString('pt-BR');
+  $('evEntraramSub').textContent = `Novos em ${currLabel}`;
+
+  $('evSairam').textContent = (Number(ev.sairamDaBase) || 0).toLocaleString('pt-BR');
+  $('evSairamSub').textContent = `Estavam em ${prevLabel}`;
+
+  $('evNunca').textContent = (Number(ev.nuncaNaBase) + Number(ev.semIdentifier || 0)).toLocaleString('pt-BR');
+  $('evNuncaSub').textContent = 'Sem registro na base';
 }
 
 const PIE_COLORS = ['#3b82f6', '#a855f7', '#22c55e', '#f59e0b', '#ef4444', '#06b6d4', '#ec4899', '#84cc16'];
@@ -513,6 +601,7 @@ function renderTable() {
   const filtered = allUsers.filter(u => {
     if (currentFilter !== 'all' && u.tipo !== currentFilter) return false;
     if (csvFilter !== 'all' && u.naBase !== csvFilter) return false;
+    if (evoFilter !== 'all' && u.evolucao !== evoFilter) return false;
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
       const match = String(u.idUser).includes(term)
@@ -525,7 +614,7 @@ function renderTable() {
   $('resultCount').textContent = `${filtered.length} resultado${filtered.length !== 1 ? 's' : ''}`;
 
   if (filtered.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="14" style="text-align:center;color:var(--text-muted)">Nenhum usuario encontrado</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="19" style="text-align:center;color:var(--text-muted)">Nenhum usuario encontrado</td></tr>';
     return;
   }
 
@@ -547,9 +636,31 @@ function renderTable() {
     const paymentLabel = u.paymentMethod === 'payroll' ? 'Folha' : (u.paymentMethod || '-');
     const naBaseColor = u.naBase === 'Sim' ? 'var(--green)' : 'var(--orange)';
     const nivel = nivelLabel(u.nivelMeli);
-    const movColor = u.movimento === 'Up' ? 'var(--green)' : u.movimento === 'Down' ? '#ef4444' : u.movimento === 'Flat' ? 'var(--blue)' : 'var(--text-muted)';
+    let movText, movColor;
+    if (u.naBase === 'Nao' && u.naBaseAnterior === 'Sim') {
+      movText = 'Nao elegivel';
+      movColor = '#ef4444';
+    } else if (u.naBase === 'Nao' && u.naBaseAnterior === 'Nao') {
+      movText = '-';
+      movColor = 'var(--text-muted)';
+    } else {
+      movText = movLabel(u.movimento);
+      movColor = u.movimento === 'Up' ? 'var(--green)' : u.movimento === 'Down' ? '#ef4444' : u.movimento === 'Flat' ? 'var(--blue)' : 'var(--text-muted)';
+    }
     const isDup = u.dupCount > 1;
     const dupBadge = isDup ? ` <span title="${u.dupCount} registros para este identifier neste refDate" style="background:#ef4444;color:#fff;font-size:10px;padding:1px 5px;border-radius:8px;cursor:help">DUP ${u.dupCount}</span>` : '';
+
+    const naBaseAntColor = u.naBaseAnterior === 'Sim' ? 'var(--green)' : 'var(--orange)';
+    const prevNivel = nivelLabel(u.prevLevelName);
+
+    const evoMap = {
+      'permaneceu': { label: 'Permaneceu', color: 'var(--green)' },
+      'entrou': { label: 'Entrou', color: 'var(--blue)' },
+      'saiu': { label: 'Saiu', color: '#ef4444' },
+      'nunca': { label: 'Nunca', color: 'var(--text-muted)' },
+      'sem-id': { label: 'Sem ID', color: 'var(--text-muted)' },
+    };
+    const evo = evoMap[u.evolucao] || { label: '-', color: 'var(--text-muted)' };
 
     tr.innerHTML = `
       <td>${u.idUser}</td>
@@ -563,7 +674,12 @@ function renderTable() {
       <td>${u.companyName || '-'}</td>
       <td><span style="color:${naBaseColor};font-weight:600">${u.naBase}</span></td>
       <td>${nivel}</td>
-      <td><span style="color:${movColor}">${movLabel(u.movimento)}</span></td>
+      <td><span style="color:${movColor}">${movText}</span></td>
+      <td><span style="color:${naBaseAntColor};font-weight:600">${u.naBaseAnterior}</span></td>
+      <td>${prevNivel}</td>
+      <td><span style="font-weight:600;color:${evo.color}">${evo.label}</span></td>
+      <td>${u.getTypeChip === 'physical' ? '<span style="color:var(--orange)">Físico</span>' : u.getTypeChip === 'esim' ? '<span style="color:var(--purple)">eSIM</span>' : '-'}</td>
+      <td>${u.tipoChip ? u.tipoChip.replace(/fisico/g, 'Físico').replace(/e-sim/g, 'eSIM') : '-'}</td>
       <td>${u.imsi || '-'}</td>
       <td>${u.iccid || '-'}</td>
     `;
@@ -623,10 +739,20 @@ document.querySelectorAll('[data-csv]').forEach(btn => {
   });
 });
 
+document.querySelectorAll('[data-evo]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('[data-evo]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    evoFilter = btn.dataset.evo;
+    renderTable();
+  });
+});
+
 $('exportIds').addEventListener('click', () => {
   const filtered = allUsers.filter(u => {
     if (currentFilter !== 'all' && u.tipo !== currentFilter) return false;
     if (csvFilter !== 'all' && u.naBase !== csvFilter) return false;
+    if (evoFilter !== 'all' && u.evolucao !== evoFilter) return false;
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
       return String(u.idUser).includes(term) || String(u.idMotorista || '').toLowerCase().includes(term);
@@ -783,6 +909,381 @@ $('apnModalClose').addEventListener('click', () => {
 
 $('apnModal').addEventListener('click', (e) => {
   if (e.target === $('apnModal')) $('apnModal').classList.add('hidden');
+});
+
+// === TABS ===
+let activeTab = 'ativacao';
+let stockLoaded = false;
+
+document.querySelectorAll('[data-tab]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('[data-tab]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    activeTab = btn.dataset.tab;
+
+    $('tabAtivacao').classList.toggle('hidden', activeTab !== 'ativacao');
+    $('tabEstoque').classList.toggle('hidden', activeTab !== 'estoque');
+
+    if (activeTab === 'estoque' && !stockLoaded) {
+      loadStock();
+    }
+  });
+});
+
+// === ESTOQUE ===
+let stTimeline = [];
+let stSelectedMonth = '';
+let selectedCompanyId = '';
+
+async function loadStock() {
+  try {
+    const res = await fetch('/payroll-ops/api/stock/companies');
+    if (!res.ok) throw new Error('API error');
+    const companies = await res.json();
+
+    const select = $('stCompanySelect');
+    select.innerHTML = '<option value="">Selecione uma empresa...</option>';
+    companies.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c.idCompany;
+      opt.textContent = `${c.companyName} (${c.total})`;
+      select.appendChild(opt);
+    });
+    stockLoaded = true;
+  } catch (err) {
+    console.error('Stock load error:', err);
+  }
+}
+
+$('stCompanySelect').addEventListener('change', (e) => {
+  selectedCompanyId = e.target.value;
+  if (!selectedCompanyId) {
+    $('stEmpty').classList.remove('hidden');
+    $('stDash').classList.add('hidden');
+    return;
+  }
+  loadCompanyDash(selectedCompanyId);
+});
+
+async function loadCompanyDash(idCompany) {
+  $('stEmpty').classList.add('hidden');
+  $('stDash').classList.remove('hidden');
+
+  try {
+    const res = await fetch(`/payroll-ops/api/stock/company/${idCompany}`);
+    if (!res.ok) throw new Error('API error');
+    const data = await res.json();
+
+    renderStockSummary(data.summary);
+    renderStockSpots(data.spots);
+
+    stTimeline = data.timeline;
+    stSelectedMonth = getCurrentMonth();
+    $('stMonthLabel').textContent = formatMonthLabel(stSelectedMonth);
+    renderStockTimeline();
+  } catch (err) {
+    console.error('Company dash error:', err);
+  }
+}
+
+function renderStockSummary(s) {
+  const total = Number(s.total) || 0;
+  const disponivel = Number(s.disponivel) || 0;
+  const associado = Number(s.associado) || 0;
+
+  $('stTotal').textContent = total.toLocaleString('pt-BR');
+  $('stFisico').textContent = (Number(s.fisico) || 0).toLocaleString('pt-BR');
+  $('stEsim').textContent = (Number(s.esim) || 0).toLocaleString('pt-BR');
+
+  $('stDisponivel').textContent = disponivel.toLocaleString('pt-BR');
+  $('stFisicoDisp').textContent = (Number(s.fisicoDisp) || 0).toLocaleString('pt-BR');
+  $('stEsimDisp').textContent = (Number(s.esimDisp) || 0).toLocaleString('pt-BR');
+
+  $('stAssociado').textContent = associado.toLocaleString('pt-BR');
+  $('stFisicoAssoc').textContent = (Number(s.fisicoAssoc) || 0).toLocaleString('pt-BR');
+  $('stEsimAssoc').textContent = (Number(s.esimAssoc) || 0).toLocaleString('pt-BR');
+
+  const taxa = total > 0 ? ((associado / total) * 100).toFixed(1) : '0.0';
+  $('stTaxaUso').textContent = taxa + '%';
+  $('stTaxaSub').textContent = `${associado.toLocaleString('pt-BR')} de ${total.toLocaleString('pt-BR')} chips`;
+}
+
+function pctBar(disponivel, total) {
+  const pct = total > 0 ? (disponivel / total * 100).toFixed(1) : 0;
+  const color = pct >= 50 ? 'var(--green)' : pct >= 20 ? 'var(--orange)' : '#ef4444';
+  return `<div style="display:flex;align-items:center;gap:8px">
+    <div class="stock-bar"><div class="stock-bar-fill" style="width:${pct}%;background:${color}"></div></div>
+    <span style="font-size:12px;color:${color};font-weight:600">${pct}%</span>
+  </div>`;
+}
+
+function renderStockTimeline() {
+  const chart = $('stChart');
+  const legend = $('stChartLegend');
+  const labels = $('stChartLabels');
+  chart.innerHTML = '';
+  legend.innerHTML = '';
+  labels.innerHTML = '';
+
+  // Filter timeline for selected month
+  const monthData = stTimeline.filter(d => d.dia && d.dia.startsWith(stSelectedMonth));
+
+  if (monthData.length === 0) {
+    const [y, m] = stSelectedMonth.split('-');
+    const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+    chart.innerHTML = '<div style="color:var(--text-muted);font-size:18px;text-align:center;width:100%;padding:40px 0">Nenhuma associacao em ' + monthNames[Number(m) - 1] + ' de ' + y + '</div>';
+    return;
+  }
+
+  const days = {};
+  const tipos = new Set();
+  monthData.forEach(d => {
+    if (!days[d.dia]) days[d.dia] = {};
+    days[d.dia][d.tipoChip] = Number(d.total);
+    tipos.add(d.tipoChip);
+  });
+
+  // Fill missing days
+  const sortedDays = Object.keys(days).sort();
+  const startDate = new Date(sortedDays[0] + 'T12:00:00');
+  const isCurrentMonth = stSelectedMonth === getCurrentMonth();
+  let endDate;
+  if (isCurrentMonth) {
+    endDate = new Date();
+    endDate.setHours(12, 0, 0, 0);
+  } else {
+    const [y, m] = stSelectedMonth.split('-').map(Number);
+    endDate = new Date(y, m, 0, 12, 0, 0);
+  }
+  for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+    const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    if (!days[key]) days[key] = {};
+  }
+
+  const tipoList = ['fisico', 'e-sim'].filter(t => tipos.has(t));
+  const dayEntries = Object.entries(days).sort((a, b) => a[0].localeCompare(b[0]));
+  const maxVal = Math.max(...dayEntries.map(([, t]) => Object.values(t).reduce((s, v) => s + v, 0)), 1);
+
+  tipoList.forEach(tipo => {
+    const item = document.createElement('span');
+    item.className = 'chart-legend-item';
+    item.innerHTML = `<span class="chart-legend-dot" style="background:${CHIP_COLORS[tipo]}"></span>${CHIP_LABELS[tipo]}`;
+    legend.appendChild(item);
+  });
+
+  dayEntries.forEach(([dia, tipoCounts]) => {
+    const total = Object.values(tipoCounts).reduce((s, v) => s + v, 0);
+    const wrap = document.createElement('div');
+    wrap.className = 'chart-bar-wrap';
+
+    const valLabel = document.createElement('span');
+    valLabel.className = 'chart-bar-value';
+    valLabel.textContent = total || '';
+
+    const barStack = document.createElement('div');
+    barStack.className = 'chart-bar-stack';
+    barStack.style.height = Math.max((total / maxVal) * 120, 2) + 'px';
+
+    tipoList.forEach(tipo => {
+      const count = tipoCounts[tipo] || 0;
+      if (count === 0) return;
+      const color = CHIP_COLORS[tipo];
+      const seg = document.createElement('div');
+      seg.className = 'chart-bar-seg';
+      seg.style.flex = count;
+      seg.style.background = color;
+
+      const ttHtml = `<span class="tt-color" style="background:${color}"></span>${CHIP_LABELS[tipo]}: <span class="tt-value">${count}</span> (${formatDay(dia)})`;
+      seg.addEventListener('mouseenter', (e) => showTooltip(e, ttHtml));
+      seg.addEventListener('mousemove', moveTooltip);
+      seg.addEventListener('mouseleave', hideTooltip);
+
+      barStack.appendChild(seg);
+    });
+
+    wrap.appendChild(valLabel);
+    wrap.appendChild(barStack);
+    chart.appendChild(wrap);
+
+    const slot = document.createElement('div');
+    slot.className = 'chart-label-slot';
+    slot.dataset.dia = dia;
+    labels.appendChild(slot);
+  });
+
+  const totalDays = dayEntries.length;
+  const step = totalDays <= 15 ? 1 : totalDays <= 30 ? 2 : 3;
+  const slots = labels.querySelectorAll('.chart-label-slot');
+  slots.forEach((slot, i) => {
+    if (i % step === 0 || i === totalDays - 1) {
+      const label = document.createElement('span');
+      label.className = 'chart-bar-label';
+      label.textContent = formatDay(slot.dataset.dia);
+      slot.appendChild(label);
+    }
+  });
+
+  chart.addEventListener('scroll', () => { labels.scrollLeft = chart.scrollLeft; });
+  labels.addEventListener('scroll', () => { chart.scrollLeft = labels.scrollLeft; });
+}
+
+// === MODAL SPOT CHIPS ===
+let spotChipsData = [];
+let spotStatusFilter = 'all';
+let spotTypeFilter = 'all';
+
+function renderStockSpots(rows) {
+  const tbody = $('stSpotBody');
+  tbody.innerHTML = '';
+  if (rows.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted)">Nenhum spot</td></tr>';
+    return;
+  }
+  rows.forEach(r => {
+    const tr = document.createElement('tr');
+    tr.style.cursor = 'pointer';
+    const total = Number(r.total);
+    const disponivel = Number(r.disponivel);
+    const label = r.parentSpotName
+      ? `<span style="color:var(--text-muted)">${r.parentSpotName} &rsaquo;</span> ${r.spotName}`
+      : r.spotName;
+    tr.innerHTML = `
+      <td><b>${label}</b></td>
+      <td>${total.toLocaleString('pt-BR')}</td>
+      <td style="color:var(--green);font-weight:600">${disponivel.toLocaleString('pt-BR')}</td>
+      <td>${Number(r.associado).toLocaleString('pt-BR')}</td>
+      <td>${Number(r.fisicoDisp).toLocaleString('pt-BR')}</td>
+      <td>${Number(r.esimDisp).toLocaleString('pt-BR')}</td>
+      <td>${pctBar(disponivel, total)}</td>
+    `;
+    tr.addEventListener('click', () => openSpotChipsModal(r.idSpot, r.spotName));
+    tbody.appendChild(tr);
+  });
+}
+
+async function openSpotChipsModal(idSpot, spotName) {
+  const modal = $('spotChipsModal');
+  const tbody = $('spotChipsTableBody');
+  $('spotChipsTitle').textContent = `Chips — ${spotName}`;
+  tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">Carregando...</td></tr>';
+  modal.classList.remove('hidden');
+
+  // Reset filters
+  spotStatusFilter = 'all';
+  spotTypeFilter = 'all';
+  document.querySelectorAll('[data-spot-status]').forEach(b => b.classList.toggle('active', b.dataset.spotStatus === 'all'));
+  document.querySelectorAll('[data-spot-type]').forEach(b => b.classList.toggle('active', b.dataset.spotType === 'all'));
+
+  try {
+    const res = await fetch(`/payroll-ops/api/stock/spot-chips?idCompany=${selectedCompanyId}&idSpot=${idSpot}`);
+    if (!res.ok) throw new Error('API error');
+    spotChipsData = await res.json();
+    renderSpotChipsTable();
+  } catch (err) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">Erro ao carregar</td></tr>';
+    console.error(err);
+  }
+}
+
+const STATUS_MAP = { 1: 'Ativo', 2: 'Inativo', 3: 'Disponível', 4: 'Reservado' };
+
+function renderSpotChipsTable() {
+  const tbody = $('spotChipsTableBody');
+  tbody.innerHTML = '';
+
+  const filtered = spotChipsData.filter(r => {
+    if (spotStatusFilter === 'disponivel' && r.idUser !== null) return false;
+    if (spotStatusFilter === 'associado' && r.idUser === null) return false;
+    if (spotTypeFilter !== 'all' && r.tipoChip !== spotTypeFilter) return false;
+    return true;
+  });
+
+  $('spotChipsCount').textContent = `${filtered.length} chip${filtered.length !== 1 ? 's' : ''}`;
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">Nenhum chip encontrado</td></tr>';
+    return;
+  }
+
+  const showQr = spotTypeFilter === 'e-sim';
+  const headerRow = document.querySelector('#spotChipsModal thead tr');
+  headerRow.innerHTML = `
+    <th>IMSI</th>
+    <th>ICCID</th>
+    <th>Tipo</th>
+    <th>Status</th>
+    <th>Usuario</th>
+    <th>Data Associacao</th>
+    ${showQr ? '<th>QR Code eSIM</th>' : ''}
+  `;
+
+  filtered.forEach(r => {
+    const tr = document.createElement('tr');
+    const tipoLabel = r.tipoChip === 'fisico' ? 'Físico' : r.tipoChip === 'e-sim' ? 'eSIM' : r.tipoChip || '-';
+    const statusLabel = STATUS_MAP[r.idStatus] || ('Status ' + r.idStatus);
+    const statusColor = r.idStatus === 1 ? 'var(--green)' : r.idStatus === 3 ? 'var(--blue)' : 'var(--text-muted)';
+    const userCell = r.idUser ? `<a style="color:var(--blue)">${r.idUser}</a> ${r.userName || ''}` : '<span style="color:var(--text-muted)">-</span>';
+    const vdateCell = r.idUser ? formatDateTime(r.vdate) : '-';
+    tr.innerHTML = `
+      <td>${r.imsi || '-'}</td>
+      <td style="font-size:11px">${r.iccid || '-'}</td>
+      <td><span style="color:${r.tipoChip === 'fisico' ? 'var(--blue)' : 'var(--purple)'}">${tipoLabel}</span></td>
+      <td><span style="color:${statusColor}">${statusLabel}</span></td>
+      <td>${userCell}</td>
+      <td>${vdateCell}</td>
+      ${showQr ? `<td class="qr-cell" style="font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis;cursor:${r.qrcodeEsim ? 'pointer' : 'default'}" ${r.qrcodeEsim ? `title="Clique para copiar" data-qr="${r.qrcodeEsim}"` : ''}>${r.qrcodeEsim || '<span style="color:var(--text-muted)">-</span>'}</td>` : ''}
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+document.querySelectorAll('[data-spot-status]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('[data-spot-status]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    spotStatusFilter = btn.dataset.spotStatus;
+    renderSpotChipsTable();
+  });
+});
+
+document.querySelectorAll('[data-spot-type]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('[data-spot-type]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    spotTypeFilter = btn.dataset.spotType;
+    renderSpotChipsTable();
+  });
+});
+
+$('spotChipsTableBody').addEventListener('click', (e) => {
+  const cell = e.target.closest('.qr-cell[data-qr]');
+  if (!cell) return;
+  navigator.clipboard.writeText(cell.dataset.qr).then(() => {
+    const orig = cell.textContent;
+    cell.textContent = 'Copiado!';
+    cell.style.color = 'var(--green)';
+    setTimeout(() => { cell.textContent = orig; cell.style.color = ''; }, 1200);
+  });
+});
+
+$('spotChipsModalClose').addEventListener('click', () => {
+  $('spotChipsModal').classList.add('hidden');
+});
+
+$('spotChipsModal').addEventListener('click', (e) => {
+  if (e.target === $('spotChipsModal')) $('spotChipsModal').classList.add('hidden');
+});
+
+$('stMonthPrev').addEventListener('click', () => {
+  stSelectedMonth = shiftMonth(stSelectedMonth, -1);
+  $('stMonthLabel').textContent = formatMonthLabel(stSelectedMonth);
+  renderStockTimeline();
+});
+
+$('stMonthNext').addEventListener('click', () => {
+  stSelectedMonth = shiftMonth(stSelectedMonth, 1);
+  $('stMonthLabel').textContent = formatMonthLabel(stSelectedMonth);
+  renderStockTimeline();
 });
 
 loadAll();

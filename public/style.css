@@ -235,6 +235,8 @@ a.card-link:hover {
 .accent-green .card-value { color: var(--green); }
 .accent-orange .card-value { color: var(--orange); }
 .accent-purple .card-value { color: var(--purple); }
+.accent-red .card-value { color: #ef4444; }
+.accent-muted .card-value { color: var(--text-muted); }
 
 .card-breakdown {
   display: flex;

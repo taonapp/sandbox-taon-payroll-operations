@@ -5,7 +5,7 @@ let currentYear, currentMonth;
 function init() {
   const now = new Date();
   currentYear = now.getFullYear();
-  currentMonth = now.getMonth(); // 0-indexed — mês atual
+  currentMonth = now.getMonth();
 
   $('prevMonth').addEventListener('click', () => changeMonth(-1));
   $('nextMonth').addEventListener('click', () => changeMonth(1));
@@ -14,7 +14,6 @@ function init() {
     if (e.target === $('modal')) closeModal();
   });
 
-  // Set today's date label
   const todayDateEl = $('todayDate');
   if (todayDateEl) {
     todayDateEl.textContent = now.toLocaleDateString('pt-BR', {
@@ -61,6 +60,20 @@ function todayKey() {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 }
 
+function renderDetailRow(r) {
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td>${r.idUser}</td>
+    <td>${r.name || '-'}</td>
+    <td>${r.cpf || '-'}</td>
+    <td>${r.codigo || '-'}</td>
+    <td><span style="color:${r.tipo === 'Titular' ? 'var(--blue)' : 'var(--purple)'}">${r.tipo}</span></td>
+    <td>${formatCurrency(r.amount)}</td>
+    <td>${r.companyName || '-'}</td>
+  `;
+  return tr;
+}
+
 let todayLoaded = false;
 
 async function loadToday() {
@@ -95,19 +108,7 @@ async function loadToday() {
     if (rows.length === 0) {
       tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted)">Nenhuma ativacao hoje</td></tr>';
     } else {
-      rows.forEach(r => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td>${r.idUser}</td>
-          <td>${r.name || '-'}</td>
-          <td>${r.cpf || '-'}</td>
-          <td>${r.codigo || '-'}</td>
-          <td><span style="color:${r.tipo === 'Titular' ? 'var(--blue)' : 'var(--purple)'}">${r.tipo}</span></td>
-          <td>${formatCurrency(r.amount)}</td>
-          <td>${r.companyName || '-'}</td>
-        `;
-        tbody.appendChild(tr);
-      });
+      rows.forEach(r => tbody.appendChild(renderDetailRow(r)));
     }
 
     if (isFirstLoad) {
@@ -159,7 +160,6 @@ async function loadMonth() {
 }
 
 function render(data) {
-  // Summary
   const totalMes = data.reduce((s, d) => s + Number(d.total), 0);
   const titMes = data.reduce((s, d) => s + Number(d.titulares), 0);
   const depMes = data.reduce((s, d) => s + Number(d.dependentes), 0);
@@ -247,19 +247,7 @@ async function showDetails(date) {
       return;
     }
 
-    rows.forEach(r => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td>${r.idUser}</td>
-        <td>${r.name || '-'}</td>
-        <td>${r.cpf || '-'}</td>
-        <td>${r.codigo || '-'}</td>
-        <td><span style="color:${r.tipo === 'Titular' ? 'var(--blue)' : 'var(--purple)'}">${r.tipo}</span></td>
-        <td>${formatCurrency(r.amount)}</td>
-        <td>${r.companyName || '-'}</td>
-      `;
-      tbody.appendChild(tr);
-    });
+    rows.forEach(r => tbody.appendChild(renderDetailRow(r)));
   } catch (err) {
     $('modalBody').innerHTML = '<tr><td colspan="7" style="color:#ef4444">Erro ao carregar detalhes</td></tr>';
   }

@@ -1,3 +1,56 @@
+/* Tabs */
+.tab-bar {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 4px;
+  width: fit-content;
+}
+
+.tab-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  padding: 8px 20px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.tab-btn:hover {
+  color: var(--text);
+}
+
+.tab-btn.active {
+  background: var(--blue);
+  color: white;
+}
+
+.tab-content.hidden {
+  display: none;
+}
+
+/* Stock bar */
+.stock-bar {
+  display: flex;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--bg);
+  min-width: 80px;
+}
+
+.stock-bar-fill {
+  height: 100%;
+  transition: width 0.3s;
+}
+
+
 /* Meli badge */
 .meli-badge {
   font-size: 12px;
@@ -20,6 +73,15 @@
   font-weight: 400;
 }
 
+
+/* Accent red for evolution */
+.card.accent-red {
+  border-left: 3px solid #ef4444;
+}
+
+.card.accent-muted {
+  border-left: 3px solid var(--text-muted);
+}
 
 /* Custom tooltip */
 .custom-tooltip {
@@ -468,4 +530,30 @@
 
 .filter-select:focus {
   border-color: var(--blue);
+}
+
+.pending-badge {
+  font-size: 12px;
+  font-weight: 700;
+  background: #ef4444;
+  color: #fff;
+  padding: 4px 14px;
+  border-radius: 20px;
+  letter-spacing: 0.5px;
+}
+
+.pending-badge-purple {
+  background: #a855f7;
+}
+
+.days-pending {
+  font-weight: 600;
+}
+
+.days-pending.warn {
+  color: #f59e0b;
+}
+
+.days-pending.danger {
+  color: #ef4444;
 }
