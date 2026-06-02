@@ -127,22 +127,22 @@
       <!-- Evolução Base Meli -->
       <section class="cards-row" id="evolutionSection">
         <div class="card accent-green">
-          <span class="card-label">Permaneceram na Base</span>
+          <span class="card-label">Ativos no Ciclo Atual</span>
           <span class="card-value" id="evPermaneceram">-</span>
           <span class="card-sub" id="evPermaneceramSub"></span>
         </div>
         <div class="card accent-blue">
-          <span class="card-label">Entraram na Base</span>
+          <span class="card-label">Entraram no Ciclo</span>
           <span class="card-value" id="evEntraram">-</span>
           <span class="card-sub" id="evEntraramSub"></span>
         </div>
         <div class="card accent-red">
-          <span class="card-label">Sairam da Base</span>
+          <span class="card-label">Sairam do Ciclo</span>
           <span class="card-value" id="evSairam">-</span>
           <span class="card-sub" id="evSairamSub"></span>
         </div>
         <div class="card accent-muted">
-          <span class="card-label">Nunca na Base</span>
+          <span class="card-label">Sem Elegibilidade</span>
           <span class="card-value" id="evNunca">-</span>
           <span class="card-sub" id="evNuncaSub"></span>
         </div>
@@ -263,15 +263,15 @@
               </div>
               <div class="filter-group">
                 <button class="filter-btn active" data-csv="all">Todos</button>
-                <button class="filter-btn" data-csv="Sim">Na Base Meli</button>
-                <button class="filter-btn" data-csv="Nao">Fora da Base</button>
+                <button class="filter-btn" data-csv="Sim">Ativo no Ciclo</button>
+                <button class="filter-btn" data-csv="Nao">Fora do Ciclo</button>
               </div>
               <div class="filter-group">
                 <button class="filter-btn active" data-evo="all">Todos</button>
-                <button class="filter-btn" data-evo="permaneceu">Permaneceu</button>
+                <button class="filter-btn" data-evo="ativo">Ativo no Ciclo</button>
                 <button class="filter-btn" data-evo="entrou">Entrou</button>
                 <button class="filter-btn" data-evo="saiu">Saiu</button>
-                <button class="filter-btn" data-evo="nunca">Nunca</button>
+                <button class="filter-btn" data-evo="nunca">Sem Eleg.</button>
               </div>
               <div class="filter-group">
                 <span style="color:var(--text-muted);font-size:12px;margin-right:4px">Ref:</span>
@@ -294,12 +294,12 @@
                   <th>Valor</th>
                   <th>Pagamento</th>
                   <th>Empresa</th>
-                  <th>Na Base</th>
+                  <th>Ciclo Atual</th>
                   <th>Nivel</th>
                   <th>Movimento</th>
-                  <th>Base Ant.</th>
+                  <th>Ciclo Ant.</th>
                   <th>Nivel Ant.</th>
-                  <th>Evolucao</th>
+                  <th>Situacao</th>
                   <th>Escolha Chip</th>
                   <th>Tipo Chip</th>
                   <th>IMSI</th>
@@ -350,11 +350,11 @@
           <!-- Fluxo -->
           <section class="cards-row">
             <div class="card accent-green">
-              <span class="card-label">Permaneceram</span>
+              <span class="card-label">Ativos em Ambos</span>
               <span class="card-value" id="mvPermaneceram">-</span>
             </div>
             <div class="card accent-blue">
-              <span class="card-label">Entraram na Base</span>
+              <span class="card-label">Entraram no Ciclo</span>
               <span class="card-value" id="mvEntraram">-</span>
             </div>
             <div class="card accent-red">
@@ -362,9 +362,9 @@
               <span class="card-value" id="mvSairam">-</span>
             </div>
             <div class="card accent-muted">
-              <span class="card-label">Fora das Bases</span>
+              <span class="card-label">Sem Elegibilidade</span>
               <span class="card-value" id="mvNenhuma">-</span>
-              <span class="card-sub">Sem registro em nenhuma</span>
+              <span class="card-sub">Sem registro em nenhum ciclo</span>
             </div>
           </section>
 
@@ -447,7 +447,7 @@
           <section class="table-section">
             <div class="card">
               <div class="table-header">
-                <span class="card-label">Entraram na Base</span>
+                <span class="card-label">Entraram no Ciclo</span>
                 <span class="pending-badge" id="mvEntraramCount" style="background:var(--blue)"></span>
               </div>
               <div class="table-scroll">
@@ -474,12 +474,12 @@
               <span class="card-value" id="mvTotalCad">-</span>
             </div>
             <div class="card accent-green">
-              <span class="card-label">Na Base Atual</span>
+              <span class="card-label">Ativos no Ciclo</span>
               <span class="card-value" id="mvCobertura">-</span>
               <span class="card-sub" id="mvCoberturaPct"></span>
             </div>
             <div class="card accent-red">
-              <span class="card-label">Fora da Base</span>
+              <span class="card-label">Fora do Ciclo</span>
               <span class="card-value" id="mvForaBase">-</span>
               <span class="card-sub" id="mvForaBasePct"></span>
             </div>
