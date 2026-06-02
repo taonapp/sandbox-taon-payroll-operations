@@ -257,16 +257,16 @@ function renderEvolution(ev) {
   const currLabel = formatRefDateLabel(ev.refDate);
 
   $('evPermaneceram').textContent = (Number(ev.permaneceramNaBase) || 0).toLocaleString('pt-BR');
-  $('evPermaneceramSub').textContent = `${prevLabel} → ${currLabel}`;
+  $('evPermaneceramSub').textContent = `Ciclos ${prevLabel} e ${currLabel}`;
 
   $('evEntraram').textContent = (Number(ev.entraramNaBase) || 0).toLocaleString('pt-BR');
-  $('evEntraramSub').textContent = `Novos em ${currLabel}`;
+  $('evEntraramSub').textContent = `Novos no ciclo ${currLabel}`;
 
   $('evSairam').textContent = (Number(ev.sairamDaBase) || 0).toLocaleString('pt-BR');
-  $('evSairamSub').textContent = `Estavam em ${prevLabel}`;
+  $('evSairamSub').textContent = `Ativos em ${prevLabel}, fora em ${currLabel}`;
 
   $('evNunca').textContent = (Number(ev.nuncaNaBase) + Number(ev.semIdentifier || 0)).toLocaleString('pt-BR');
-  $('evNuncaSub').textContent = 'Sem registro na base';
+  $('evNuncaSub').textContent = 'Sem registro no ciclo';
 }
 
 const PIE_COLORS = ['#3b82f6', '#a855f7', '#22c55e', '#f59e0b', '#ef4444', '#06b6d4', '#ec4899', '#84cc16'];
@@ -608,7 +608,8 @@ function renderTable() {
   const filtered = allUsers.filter(u => {
     if (currentFilter !== 'all' && u.tipo !== currentFilter) return false;
     if (csvFilter !== 'all' && u.naBase !== csvFilter) return false;
-    if (evoFilter !== 'all' && u.evolucao !== evoFilter) return false;
+    if (evoFilter === 'ativo') { if (u.naBase !== 'Sim') return false; }
+    else if (evoFilter !== 'all' && u.evolucao !== evoFilter) return false;
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
       const match = String(u.idUser).includes(term)
@@ -661,10 +662,10 @@ function renderTable() {
     const prevNivel = nivelLabel(u.prevLevelName);
 
     const evoMap = {
-      'permaneceu': { label: 'Permaneceu', color: 'var(--green)' },
+      'permaneceu': { label: 'Ativo', color: 'var(--green)' },
       'entrou': { label: 'Entrou', color: 'var(--blue)' },
       'saiu': { label: 'Saiu', color: '#ef4444' },
-      'nunca': { label: 'Nunca', color: 'var(--text-muted)' },
+      'nunca': { label: 'Sem eleg.', color: 'var(--text-muted)' },
       'sem-id': { label: 'Sem ID', color: 'var(--text-muted)' },
     };
     const evo = evoMap[u.evolucao] || { label: '-', color: 'var(--text-muted)' };
@@ -759,7 +760,8 @@ $('exportIds').addEventListener('click', () => {
   const filtered = allUsers.filter(u => {
     if (currentFilter !== 'all' && u.tipo !== currentFilter) return false;
     if (csvFilter !== 'all' && u.naBase !== csvFilter) return false;
-    if (evoFilter !== 'all' && u.evolucao !== evoFilter) return false;
+    if (evoFilter === 'ativo') { if (u.naBase !== 'Sim') return false; }
+    else if (evoFilter !== 'all' && u.evolucao !== evoFilter) return false;
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
       return String(u.idUser).includes(term) || String(u.idMotorista || '').toLowerCase().includes(term);
@@ -1060,23 +1062,94 @@ function renderMovements(d) {
   $('mvDesceram').textContent = d.movimentos.desceram.toLocaleString('pt-BR');
   $('mvMantiveram').textContent = d.movimentos.mantiveram.toLocaleString('pt-BR');
 
-  // Transitions
+  // Transitions - grouped by category
   const transBody = $('mvTransBody');
   transBody.innerHTML = '';
-  d.transitions.forEach(t => {
-    const [from, to] = t.key.split(' -> ');
+
+  const upKeys = ['Silver -> Gold', 'Silver -> Platinum', 'Gold -> Platinum'];
+  const downKeys = ['Gold -> Silver', 'Platinum -> Silver', 'Platinum -> Gold'];
+  const flatKeys = ['Silver -> Silver', 'Gold -> Gold', 'Platinum -> Platinum'];
+
+  const ups = d.transitions.filter(t => upKeys.includes(t.key));
+  const downs = d.transitions.filter(t => downKeys.includes(t.key));
+  const flats = d.transitions.filter(t => flatKeys.includes(t.key));
+
+  // Perderam benefício agrupado por nível
+  const saiLevels = {};
+  d.sairamDetail.forEach(r => {
+    const l = r.prevLevel || 'Sem nível';
+    saiLevels[l] = (saiLevels[l] || 0) + 1;
+  });
+  const saiEntries = Object.entries(saiLevels).sort((a, b) => b[1] - a[1]);
+
+  function addSectionHeader(label, color) {
     const tr = document.createElement('tr');
-    const isUp = ['Silver -> Gold', 'Silver -> Platinum', 'Gold -> Platinum'].includes(t.key);
-    const isDown = ['Gold -> Silver', 'Platinum -> Silver', 'Platinum -> Gold'].includes(t.key);
-    const arrowColor = isUp ? 'var(--green)' : isDown ? '#ef4444' : 'var(--blue)';
+    tr.innerHTML = `<td colspan="4" style="font-weight:700;color:${color};padding-top:16px;border-bottom:none">${label}</td>`;
+    transBody.appendChild(tr);
+  }
+
+  function addTransRow(from, arrow, to, count, arrowColor) {
+    const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${levelTag(from)}</td>
-      <td><span class="transition-arrow" style="color:${arrowColor}">&rarr;</span></td>
-      <td>${levelTag(to)}</td>
-      <td><b>${t.count}</b></td>
+      <td><span class="transition-arrow" style="color:${arrowColor}">${arrow}</span></td>
+      <td>${to ? levelTag(to) : ''}</td>
+      <td><b>${count}</b></td>
     `;
     transBody.appendChild(tr);
-  });
+  }
+
+  function addTotalRow(total, color) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td colspan="3" style="text-align:right;color:${color};font-size:12px;font-weight:600;padding-right:8px">Total</td>
+      <td style="color:${color};font-weight:700;border-top:1px solid ${color}30">${total}</td>
+    `;
+    transBody.appendChild(tr);
+  }
+
+  if (ups.length > 0) {
+    addSectionHeader('Subiram de Nivel', 'var(--green)');
+    let sum = 0;
+    ups.forEach(t => {
+      const [from, to] = t.key.split(' -> ');
+      addTransRow(from, '&uarr;', to, t.count, 'var(--green)');
+      sum += t.count;
+    });
+    addTotalRow(sum, 'var(--green)');
+  }
+
+  if (flats.length > 0) {
+    addSectionHeader('Mantiveram Nivel', 'var(--blue)');
+    let sum = 0;
+    flats.forEach(t => {
+      const [from, to] = t.key.split(' -> ');
+      addTransRow(from, '&rarr;', to, t.count, 'var(--blue)');
+      sum += t.count;
+    });
+    addTotalRow(sum, 'var(--blue)');
+  }
+
+  if (downs.length > 0) {
+    addSectionHeader('Desceram de Nivel', '#ef4444');
+    let sum = 0;
+    downs.forEach(t => {
+      const [from, to] = t.key.split(' -> ');
+      addTransRow(from, '&darr;', to, t.count, '#ef4444');
+      sum += t.count;
+    });
+    addTotalRow(sum, '#ef4444');
+  }
+
+  if (saiEntries.length > 0) {
+    addSectionHeader('Perderam Beneficio', 'var(--text-muted)');
+    let sum = 0;
+    saiEntries.forEach(([level, count]) => {
+      addTransRow(level, '&times;', null, count, 'var(--text-muted)');
+      sum += count;
+    });
+    addTotalRow(sum, 'var(--text-muted)');
+  }
 
   // Saíram detail
   $('mvSairamCount').textContent = d.sairamDetail.length;
