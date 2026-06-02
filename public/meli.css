@@ -546,6 +546,24 @@
   background: #a855f7;
 }
 
+.transition-arrow {
+  color: var(--text-muted);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.level-tag {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.level-tag.silver { background: #94a3b820; color: #94a3b8; }
+.level-tag.gold { background: #f59e0b20; color: #f59e0b; }
+.level-tag.platinum { background: #3b82f620; color: #3b82f6; }
+
 .days-pending {
   font-weight: 600;
 }

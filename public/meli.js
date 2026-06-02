@@ -22,6 +22,13 @@ function formatDateTime(d) {
   return dt.toLocaleDateString('pt-BR') + ' ' + dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 }
 
+function formatDateTimeBR(d) {
+  if (!d) return '-';
+  const dt = new Date(d);
+  dt.setHours(dt.getHours() - 3);
+  return dt.toLocaleDateString('pt-BR') + ' ' + dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+}
+
 function formatDay(dateStr) {
   const d = new Date(dateStr + 'T12:00:00');
   return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
@@ -126,7 +133,7 @@ function renderPendingSection(rows, sectionId, tbodyId, countId) {
       <td>${r.idMotorista || '-'}</td>
       <td><span style="color:${r.tipo === 'Titular' ? 'var(--blue)' : 'var(--purple)'}">${r.tipo}</span></td>
       <td><span style="color:${r.status === 'enabled' ? 'var(--green)' : 'var(--text-muted)'}">${r.status || '-'}</span></td>
-      <td>${formatDate(r.dataCadastro)}</td>
+      <td>${formatDateTimeBR(r.dataCadastro)}</td>
       <td>${r.productName || '-'}</td>
       <td>${r.amount ? formatCurrency(r.amount) : '-'}</td>
       <td>${r.companyName || '-'}</td>
@@ -667,7 +674,7 @@ function renderTable() {
       <td>${u.idMotorista || '-'}${dupBadge}</td>
       <td><span style="color:${u.tipo === 'Titular' ? 'var(--blue)' : 'var(--purple)'}">${u.tipo}</span></td>
       <td><span style="color:${statusColor}">${u.status || '-'}</span></td>
-      <td>${formatDate(u.dataCadastro)}</td>
+      <td>${formatDateTimeBR(u.dataCadastro)}</td>
       <td>${u.productName || '-'}</td>
       <td>${u.amount ? formatCurrency(u.amount) : '-'}</td>
       <td>${paymentLabel}</td>
@@ -922,13 +929,204 @@ document.querySelectorAll('[data-tab]').forEach(btn => {
     activeTab = btn.dataset.tab;
 
     $('tabAtivacao').classList.toggle('hidden', activeTab !== 'ativacao');
+    $('tabMovimentos').classList.toggle('hidden', activeTab !== 'movimentos');
     $('tabEstoque').classList.toggle('hidden', activeTab !== 'estoque');
 
     if (activeTab === 'estoque' && !stockLoaded) {
       loadStock();
     }
+    if (activeTab === 'movimentos' && !movementsLoaded) {
+      loadMovementsTab();
+    }
   });
 });
+
+// === MOVIMENTOS ===
+let movementsLoaded = false;
+
+async function loadMovementsTab() {
+  try {
+    const res = await fetch('/payroll-ops/api/meli/ref-dates');
+    if (!res.ok) return;
+    const refDates = await res.json();
+
+    const select = $('mvRefDateSelect');
+    select.innerHTML = '';
+    refDates.forEach(rd => {
+      const opt = document.createElement('option');
+      opt.value = rd;
+      const y = rd.substring(0, 4);
+      const m = rd.substring(4, 6);
+      const names = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+      opt.textContent = names[Number(m) - 1] + '/' + y;
+      select.appendChild(opt);
+    });
+
+    movementsLoaded = true;
+    if (refDates.length > 0) {
+      select.value = refDates[0];
+      loadMovements(refDates[0]);
+    }
+  } catch (err) {
+    console.error('Movements tab error:', err);
+  }
+}
+
+$('mvRefDateSelect').addEventListener('change', (e) => {
+  loadMovements(e.target.value);
+});
+
+async function loadMovements(refDate) {
+  $('mvLoading').textContent = 'Carregando...';
+  $('mvLoading').classList.remove('hidden');
+  $('mvDash').classList.add('hidden');
+
+  try {
+    const res = await fetch(`/payroll-ops/api/meli/movements?refDate=${refDate}`);
+    if (!res.ok) throw new Error('API error');
+    const data = await res.json();
+
+    $('mvLoading').classList.add('hidden');
+    $('mvDash').classList.remove('hidden');
+    renderMovements(data);
+  } catch (err) {
+    $('mvLoading').textContent = 'Erro ao carregar dados.';
+    console.error(err);
+  }
+}
+
+function levelTag(name) {
+  if (!name) return '-';
+  const cls = name.toLowerCase();
+  const label = { Silver: 'Prata', Gold: 'Ouro', Platinum: 'Platina' }[name] || name;
+  return `<span class="level-tag ${cls}">${label}</span>`;
+}
+
+function movLabel(mov) {
+  if (!mov) return '-';
+  const map = { Up: 'Subiu', Down: 'Desceu', Flat: 'Manteve' };
+  const color = mov === 'Up' ? 'var(--green)' : mov === 'Down' ? '#ef4444' : 'var(--blue)';
+  return `<span style="color:${color}">${map[mov] || mov}</span>`;
+}
+
+function renderMovements(d) {
+  // Overview
+  const diff = d.naCurr - d.naPrev;
+  $('mvPrevTotal').textContent = d.naPrev.toLocaleString('pt-BR');
+  $('mvPrevLabel').textContent = formatRefDateLabel(d.prevRefDate);
+  $('mvCurrTotal').textContent = d.naCurr.toLocaleString('pt-BR');
+  $('mvCurrLabel').textContent = formatRefDateLabel(d.refDate);
+  $('mvVariacao').textContent = (diff >= 0 ? '+' : '') + diff.toLocaleString('pt-BR');
+  $('mvVariacao').style.color = diff >= 0 ? 'var(--green)' : '#ef4444';
+  $('mvVariacaoPct').textContent = d.naPrev > 0 ? ((diff / d.naPrev) * 100).toFixed(1) + '%' : '';
+
+  // Fluxo
+  $('mvPermaneceram').textContent = d.permaneceram.toLocaleString('pt-BR');
+  $('mvEntraram').textContent = d.entraram.toLocaleString('pt-BR');
+  $('mvSairam').textContent = d.sairam.toLocaleString('pt-BR');
+  $('mvNenhuma').textContent = d.nenhumaBase.toLocaleString('pt-BR');
+
+  // Level distribution
+  const lvlBody = $('mvLevelBody');
+  lvlBody.innerHTML = '';
+  ['Silver', 'Gold', 'Platinum'].forEach(n => {
+    const p = d.prevLevels[n] || 0;
+    const c = d.currLevels[n] || 0;
+    const v = c - p;
+    const color = v > 0 ? 'var(--green)' : v < 0 ? '#ef4444' : 'var(--text-muted)';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${levelTag(n)}</td><td>${p}</td><td>${c}</td><td style="color:${color};font-weight:600">${v >= 0 ? '+' : ''}${v}</td>`;
+    lvlBody.appendChild(tr);
+  });
+
+  // Retention
+  const retBody = $('mvRetencaoBody');
+  retBody.innerHTML = '';
+  d.retencao.forEach(r => {
+    const tr = document.createElement('tr');
+    const pctColor = r.pct >= 90 ? 'var(--green)' : r.pct >= 70 ? 'var(--orange)' : '#ef4444';
+    tr.innerHTML = `
+      <td>${levelTag(r.nivel)}</td>
+      <td>${r.total}</td>
+      <td>${r.ficaram}</td>
+      <td style="color:#ef4444;font-weight:600">${r.perdidos}</td>
+      <td style="color:${pctColor};font-weight:600">${r.pct}%</td>
+    `;
+    retBody.appendChild(tr);
+  });
+
+  // Movimentos
+  $('mvSubiram').textContent = d.movimentos.subiram.toLocaleString('pt-BR');
+  $('mvDesceram').textContent = d.movimentos.desceram.toLocaleString('pt-BR');
+  $('mvMantiveram').textContent = d.movimentos.mantiveram.toLocaleString('pt-BR');
+
+  // Transitions
+  const transBody = $('mvTransBody');
+  transBody.innerHTML = '';
+  d.transitions.forEach(t => {
+    const [from, to] = t.key.split(' -> ');
+    const tr = document.createElement('tr');
+    const isUp = ['Silver -> Gold', 'Silver -> Platinum', 'Gold -> Platinum'].includes(t.key);
+    const isDown = ['Gold -> Silver', 'Platinum -> Silver', 'Platinum -> Gold'].includes(t.key);
+    const arrowColor = isUp ? 'var(--green)' : isDown ? '#ef4444' : 'var(--blue)';
+    tr.innerHTML = `
+      <td>${levelTag(from)}</td>
+      <td><span class="transition-arrow" style="color:${arrowColor}">&rarr;</span></td>
+      <td>${levelTag(to)}</td>
+      <td><b>${t.count}</b></td>
+    `;
+    transBody.appendChild(tr);
+  });
+
+  // Saíram detail
+  $('mvSairamCount').textContent = d.sairamDetail.length;
+  const saiBody = $('mvSairamBody');
+  saiBody.innerHTML = '';
+  if (d.sairamDetail.length === 0) {
+    saiBody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted)">Nenhum</td></tr>';
+  } else {
+    d.sairamDetail.forEach(r => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${r.idUser}</td>
+        <td>${r.name || '-'}</td>
+        <td>${r.identifier || '-'}</td>
+        <td>${levelTag(r.prevLevel)}</td>
+        <td>${movLabel(r.prevMovement)}</td>
+      `;
+      saiBody.appendChild(tr);
+    });
+  }
+
+  // Entraram detail
+  $('mvEntraramCount').textContent = d.entraramDetail.length;
+  const entBody = $('mvEntraramBody');
+  entBody.innerHTML = '';
+  if (d.entraramDetail.length === 0) {
+    entBody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted)">Nenhum</td></tr>';
+  } else {
+    d.entraramDetail.forEach(r => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${r.idUser}</td>
+        <td>${r.name || '-'}</td>
+        <td>${r.identifier || '-'}</td>
+        <td>${levelTag(r.currLevel)}</td>
+        <td>${movLabel(r.currMovement)}</td>
+      `;
+      entBody.appendChild(tr);
+    });
+  }
+
+  // Cobertura
+  $('mvTotalCad').textContent = d.totalCadastrados.toLocaleString('pt-BR');
+  $('mvCobertura').textContent = d.naCurr.toLocaleString('pt-BR');
+  const cobPct = d.totalCadastrados > 0 ? (d.naCurr / d.totalCadastrados * 100).toFixed(1) : '0';
+  $('mvCoberturaPct').textContent = cobPct + '% dos cadastrados';
+  const fora = d.totalCadastrados - d.naCurr;
+  $('mvForaBase').textContent = fora.toLocaleString('pt-BR');
+  $('mvForaBasePct').textContent = d.totalCadastrados > 0 ? ((fora / d.totalCadastrados) * 100).toFixed(1) + '% dos cadastrados' : '';
+}
 
 // === ESTOQUE ===
 let stTimeline = [];

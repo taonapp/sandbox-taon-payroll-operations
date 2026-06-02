@@ -69,6 +69,7 @@
 
     <div class="tab-bar">
       <button class="tab-btn active" data-tab="ativacao">Ativacao</button>
+      <button class="tab-btn" data-tab="movimentos">Movimentos</button>
       <button class="tab-btn" data-tab="estoque">Estoque de Chips</button>
     </div>
 
@@ -313,6 +314,179 @@
       </div><!-- /tabAtivacao -->
 
       <!-- TAB ESTOQUE -->
+      <!-- TAB MOVIMENTOS -->
+      <div id="tabMovimentos" class="tab-content hidden">
+        <section class="cards-row">
+          <div class="card" style="flex:1">
+            <div style="display:flex;align-items:center;gap:12px">
+              <span class="card-label" style="margin:0">Ref. Date</span>
+              <select id="mvRefDateSelect" class="filter-select" style="font-size:14px;padding:8px 14px"></select>
+            </div>
+          </div>
+        </section>
+
+        <div id="mvLoading" style="text-align:center;color:var(--text-muted);padding:40px 0">Selecione um refDate...</div>
+
+        <div id="mvDash" class="hidden">
+          <!-- Overview -->
+          <section class="cards-row">
+            <div class="card accent-blue">
+              <span class="card-label">Base Anterior</span>
+              <span class="card-value" id="mvPrevTotal">-</span>
+              <span class="card-sub" id="mvPrevLabel"></span>
+            </div>
+            <div class="card accent-blue">
+              <span class="card-label">Base Atual</span>
+              <span class="card-value" id="mvCurrTotal">-</span>
+              <span class="card-sub" id="mvCurrLabel"></span>
+            </div>
+            <div class="card accent-green">
+              <span class="card-label">Variacao Liquida</span>
+              <span class="card-value" id="mvVariacao">-</span>
+              <span class="card-sub" id="mvVariacaoPct"></span>
+            </div>
+          </section>
+
+          <!-- Fluxo -->
+          <section class="cards-row">
+            <div class="card accent-green">
+              <span class="card-label">Permaneceram</span>
+              <span class="card-value" id="mvPermaneceram">-</span>
+            </div>
+            <div class="card accent-blue">
+              <span class="card-label">Entraram na Base</span>
+              <span class="card-value" id="mvEntraram">-</span>
+            </div>
+            <div class="card accent-red">
+              <span class="card-label">Perderam Beneficio</span>
+              <span class="card-value" id="mvSairam">-</span>
+            </div>
+            <div class="card accent-muted">
+              <span class="card-label">Fora das Bases</span>
+              <span class="card-value" id="mvNenhuma">-</span>
+              <span class="card-sub">Sem registro em nenhuma</span>
+            </div>
+          </section>
+
+          <!-- Distribuição por nível -->
+          <section class="cards-row">
+            <div class="card">
+              <span class="card-label">Distribuicao por Nivel</span>
+              <div class="table-scroll" style="margin-top:12px">
+                <table class="data-table">
+                  <thead><tr><th>Nivel</th><th>Anterior</th><th>Atual</th><th>Variacao</th></tr></thead>
+                  <tbody id="mvLevelBody"></tbody>
+                </table>
+              </div>
+            </div>
+            <div class="card">
+              <span class="card-label">Retencao por Nivel</span>
+              <div class="table-scroll" style="margin-top:12px">
+                <table class="data-table">
+                  <thead><tr><th>Nivel</th><th>Anterior</th><th>Ficaram</th><th>Perderam</th><th>Retencao</th></tr></thead>
+                  <tbody id="mvRetencaoBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <!-- Movimentos de quem permaneceu -->
+          <section class="cards-row">
+            <div class="card accent-green">
+              <span class="card-label">Subiram de Nivel</span>
+              <span class="card-value" id="mvSubiram">-</span>
+            </div>
+            <div class="card accent-red">
+              <span class="card-label">Desceram de Nivel</span>
+              <span class="card-value" id="mvDesceram">-</span>
+            </div>
+            <div class="card accent-blue">
+              <span class="card-label">Mantiveram Nivel</span>
+              <span class="card-value" id="mvMantiveram">-</span>
+            </div>
+          </section>
+
+          <!-- Transições detalhadas -->
+          <section class="cards-row">
+            <div class="card">
+              <span class="card-label">Transicoes de Nivel</span>
+              <div class="table-scroll" style="margin-top:12px">
+                <table class="data-table">
+                  <thead><tr><th>De</th><th></th><th>Para</th><th>Qtd</th></tr></thead>
+                  <tbody id="mvTransBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <!-- Quem perdeu benefício -->
+          <section class="table-section">
+            <div class="card">
+              <div class="table-header">
+                <span class="card-label">Perderam Beneficio</span>
+                <span class="pending-badge" id="mvSairamCount"></span>
+              </div>
+              <div class="table-scroll">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>ID TaOn</th>
+                      <th>Nome</th>
+                      <th>ID Motorista</th>
+                      <th>Nivel Anterior</th>
+                      <th>Movimento Anterior</th>
+                    </tr>
+                  </thead>
+                  <tbody id="mvSairamBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <!-- Quem entrou -->
+          <section class="table-section">
+            <div class="card">
+              <div class="table-header">
+                <span class="card-label">Entraram na Base</span>
+                <span class="pending-badge" id="mvEntraramCount" style="background:var(--blue)"></span>
+              </div>
+              <div class="table-scroll">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>ID TaOn</th>
+                      <th>Nome</th>
+                      <th>ID Motorista</th>
+                      <th>Nivel</th>
+                      <th>Movimento</th>
+                    </tr>
+                  </thead>
+                  <tbody id="mvEntraramBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <!-- Cobertura -->
+          <section class="cards-row">
+            <div class="card accent-blue">
+              <span class="card-label">Cadastrados MELI26</span>
+              <span class="card-value" id="mvTotalCad">-</span>
+            </div>
+            <div class="card accent-green">
+              <span class="card-label">Na Base Atual</span>
+              <span class="card-value" id="mvCobertura">-</span>
+              <span class="card-sub" id="mvCoberturaPct"></span>
+            </div>
+            <div class="card accent-red">
+              <span class="card-label">Fora da Base</span>
+              <span class="card-value" id="mvForaBase">-</span>
+              <span class="card-sub" id="mvForaBasePct"></span>
+            </div>
+          </section>
+        </div>
+      </div><!-- /tabMovimentos -->
+
       <div id="tabEstoque" class="tab-content hidden">
         <!-- Seletor de empresa -->
         <section class="cards-row">

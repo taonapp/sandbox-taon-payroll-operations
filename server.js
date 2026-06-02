@@ -1442,6 +1442,128 @@ apiRouter.get('/api/meli/users', async (req, res) => {
   }
 });
 
+// Movimentos entre refDates (apenas cadastrados MELI26)
+apiRouter.get('/api/meli/movements', async (req, res) => {
+  try {
+    const refDate = req.query.refDate;
+    if (!refDate) return res.json({});
+
+    const y = parseInt(refDate.substring(0, 4));
+    const m = parseInt(refDate.substring(4, 6));
+    const prevRefDate = m === 1 ? `${y - 1}12` : `${y}${String(m - 1).padStart(2, '0')}`;
+
+    const [rows] = await pool.query(`
+      WITH meli_users AS (
+        SELECT DISTINCT mc.idUser
+        FROM MgmChain mc
+        WHERE mc.mgmInvCode = 'MELI26' AND mc.nivel = 1
+      ),
+      identifiers AS (
+        SELECT u.id AS idUser, u.name, u.status, um.value AS identifier
+        FROM meli_users mu
+        INNER JOIN Users u ON u.id = mu.idUser
+        INNER JOIN UsersMetadata um ON um.idUser = u.id AND um.name = 'identifier'
+        WHERE u.internalUser = 0
+      ),
+      curr AS (
+        SELECT identifier, currentLevelNumber AS level, currentLevelName AS levelName, moviment AS movement
+        FROM (
+          SELECT m.*, ROW_NUMBER() OVER (PARTITION BY m.identifier ORDER BY m.id DESC) AS rn
+          FROM Meli m WHERE m.refDate = ?
+        ) x WHERE rn = 1
+      ),
+      prev AS (
+        SELECT identifier, currentLevelNumber AS level, currentLevelName AS levelName, moviment AS movement
+        FROM (
+          SELECT m.*, ROW_NUMBER() OVER (PARTITION BY m.identifier ORDER BY m.id DESC) AS rn
+          FROM Meli m WHERE m.refDate = ?
+        ) x WHERE rn = 1
+      )
+      SELECT
+        i.idUser, i.name, i.identifier, i.status,
+        p.levelName AS prevLevel, p.level AS prevLevelNum, p.movement AS prevMovement,
+        c.levelName AS currLevel, c.level AS currLevelNum, c.movement AS currMovement,
+        CASE
+          WHEN c.identifier IS NOT NULL AND p.identifier IS NOT NULL THEN 'permaneceu'
+          WHEN c.identifier IS NOT NULL AND p.identifier IS NULL THEN 'entrou'
+          WHEN c.identifier IS NULL AND p.identifier IS NOT NULL THEN 'saiu'
+          ELSE 'nenhuma'
+        END AS evolucao
+      FROM identifiers i
+      LEFT JOIN curr c ON c.identifier = i.identifier
+      LEFT JOIN prev p ON p.identifier = i.identifier
+    `, [refDate, prevRefDate]);
+
+    // Compute stats
+    const totalCadastrados = rows.length;
+    const permaneceu = rows.filter(r => r.evolucao === 'permaneceu');
+    const entrou = rows.filter(r => r.evolucao === 'entrou');
+    const saiu = rows.filter(r => r.evolucao === 'saiu');
+    const nenhuma = rows.filter(r => r.evolucao === 'nenhuma');
+    const naPrev = rows.filter(r => r.prevLevel);
+    const naCurr = rows.filter(r => r.currLevel);
+
+    // Level distribution
+    const prevLevels = { Silver: 0, Gold: 0, Platinum: 0 };
+    const currLevels = { Silver: 0, Gold: 0, Platinum: 0 };
+    naPrev.forEach(r => { if (prevLevels[r.prevLevel] !== undefined) prevLevels[r.prevLevel]++; });
+    naCurr.forEach(r => { if (currLevels[r.currLevel] !== undefined) currLevels[r.currLevel]++; });
+
+    // Transitions
+    const transitions = {};
+    let subiram = 0, desceram = 0, mantiveram = 0;
+    permaneceu.forEach(r => {
+      if (!r.prevLevel || !r.currLevel) return;
+      const key = `${r.prevLevel} -> ${r.currLevel}`;
+      transitions[key] = (transitions[key] || 0) + 1;
+      if (r.currLevelNum > r.prevLevelNum) subiram++;
+      else if (r.currLevelNum < r.prevLevelNum) desceram++;
+      else mantiveram++;
+    });
+
+    // Retention by level
+    const retencao = ['Silver', 'Gold', 'Platinum'].map(nivel => {
+      const total = naPrev.filter(r => r.prevLevel === nivel).length;
+      const ficaram = permaneceu.filter(r => r.prevLevel === nivel).length;
+      const perdidos = saiu.filter(r => r.prevLevel === nivel).length;
+      return { nivel, total, ficaram, perdidos, pct: total > 0 ? +(ficaram / total * 100).toFixed(1) : 0 };
+    });
+
+    // Detail lists
+    const sairamDetail = saiu.map(r => ({
+      idUser: r.idUser, name: r.name, identifier: r.identifier,
+      prevLevel: r.prevLevel, prevMovement: r.prevMovement,
+    }));
+
+    const entraramDetail = entrou.map(r => ({
+      idUser: r.idUser, name: r.name, identifier: r.identifier,
+      currLevel: r.currLevel, currMovement: r.currMovement,
+    }));
+
+    res.json({
+      refDate,
+      prevRefDate,
+      totalCadastrados,
+      naPrev: naPrev.length,
+      naCurr: naCurr.length,
+      permaneceram: permaneceu.length,
+      entraram: entrou.length,
+      sairam: saiu.length,
+      nenhumaBase: nenhuma.length,
+      prevLevels,
+      currLevels,
+      movimentos: { subiram, desceram, mantiveram },
+      transitions: Object.entries(transitions).map(([key, count]) => ({ key, count })).sort((a, b) => b.count - a.count),
+      retencao,
+      sairamDetail,
+      entraramDetail,
+    });
+  } catch (err) {
+    console.error('Meli movements error:', err);
+    res.status(500).json({ error: 'Erro ao consultar movimentos' });
+  }
+});
+
 // Estoque — lista de companies com chips
 apiRouter.get('/api/stock/companies', async (req, res) => {
   try {
