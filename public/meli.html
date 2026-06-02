@@ -67,9 +67,17 @@
       <div id="refreshContainer"></div>
     </header>
 
+    <div class="tab-bar">
+      <button class="tab-btn active" data-tab="ativacao">Ativacao</button>
+      <button class="tab-btn" data-tab="estoque">Estoque de Chips</button>
+    </div>
+
     <div id="loading" class="loading">Carregando dados...</div>
 
     <div id="page" class="hidden">
+
+      <!-- TAB ATIVACAO -->
+      <div id="tabAtivacao" class="tab-content">
       <!-- Cards -->
       <section class="cards-row">
         <div class="card accent-blue">
@@ -115,6 +123,30 @@
         </div>
       </section>
 
+      <!-- Evolução Base Meli -->
+      <section class="cards-row" id="evolutionSection">
+        <div class="card accent-green">
+          <span class="card-label">Permaneceram na Base</span>
+          <span class="card-value" id="evPermaneceram">-</span>
+          <span class="card-sub" id="evPermaneceramSub"></span>
+        </div>
+        <div class="card accent-blue">
+          <span class="card-label">Entraram na Base</span>
+          <span class="card-value" id="evEntraram">-</span>
+          <span class="card-sub" id="evEntraramSub"></span>
+        </div>
+        <div class="card accent-red">
+          <span class="card-label">Sairam da Base</span>
+          <span class="card-value" id="evSairam">-</span>
+          <span class="card-sub" id="evSairamSub"></span>
+        </div>
+        <div class="card accent-muted">
+          <span class="card-label">Nunca na Base</span>
+          <span class="card-value" id="evNunca">-</span>
+          <span class="card-sub" id="evNuncaSub"></span>
+        </div>
+      </section>
+
       <!-- Distribuição de planos -->
       <section class="cards-row">
         <div class="card">
@@ -156,6 +188,66 @@
         </div>
       </section>
 
+      <!-- Pendentes chip fisico -->
+      <section class="table-section" id="pendingChipsSection" style="display:none">
+        <div class="card">
+          <div class="table-header">
+            <span class="card-label">Pendentes de Retirada de Chip Fisico</span>
+            <span class="pending-badge" id="pendingCount"></span>
+          </div>
+          <p style="color:var(--text-muted);font-size:13px;margin:0 0 12px">Usuarios que escolheram chip fisico na ativacao mas ainda nao possuem chip associado.</p>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>ID TaOn</th>
+                  <th>Nome</th>
+                  <th>ID Motorista</th>
+                  <th>Tipo</th>
+                  <th>Status</th>
+                  <th>Cadastro</th>
+                  <th>Plano</th>
+                  <th>Valor</th>
+                  <th>Empresa</th>
+                  <th>Dias Pendente</th>
+                </tr>
+              </thead>
+              <tbody id="pendingTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- Pendentes eSIM -->
+      <section class="table-section" id="pendingEsimSection" style="display:none">
+        <div class="card">
+          <div class="table-header">
+            <span class="card-label">Pendentes de Ativacao eSIM</span>
+            <span class="pending-badge pending-badge-purple" id="pendingEsimCount"></span>
+          </div>
+          <p style="color:var(--text-muted);font-size:13px;margin:0 0 12px">Usuarios que escolheram eSIM na ativacao mas ainda nao possuem chip associado.</p>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>ID TaOn</th>
+                  <th>Nome</th>
+                  <th>ID Motorista</th>
+                  <th>Tipo</th>
+                  <th>Status</th>
+                  <th>Cadastro</th>
+                  <th>Plano</th>
+                  <th>Valor</th>
+                  <th>Empresa</th>
+                  <th>Dias Pendente</th>
+                </tr>
+              </thead>
+              <tbody id="pendingEsimTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
       <!-- Tabela de usuarios -->
       <section class="table-section">
         <div class="card">
@@ -172,6 +264,13 @@
                 <button class="filter-btn active" data-csv="all">Todos</button>
                 <button class="filter-btn" data-csv="Sim">Na Base Meli</button>
                 <button class="filter-btn" data-csv="Nao">Fora da Base</button>
+              </div>
+              <div class="filter-group">
+                <button class="filter-btn active" data-evo="all">Todos</button>
+                <button class="filter-btn" data-evo="permaneceu">Permaneceu</button>
+                <button class="filter-btn" data-evo="entrou">Entrou</button>
+                <button class="filter-btn" data-evo="saiu">Saiu</button>
+                <button class="filter-btn" data-evo="nunca">Nunca</button>
               </div>
               <div class="filter-group">
                 <span style="color:var(--text-muted);font-size:12px;margin-right:4px">Ref:</span>
@@ -197,6 +296,11 @@
                   <th>Na Base</th>
                   <th>Nivel</th>
                   <th>Movimento</th>
+                  <th>Base Ant.</th>
+                  <th>Nivel Ant.</th>
+                  <th>Evolucao</th>
+                  <th>Escolha Chip</th>
+                  <th>Tipo Chip</th>
                   <th>IMSI</th>
                   <th>ICCID</th>
                 </tr>
@@ -206,6 +310,102 @@
           </div>
         </div>
       </section>
+      </div><!-- /tabAtivacao -->
+
+      <!-- TAB ESTOQUE -->
+      <div id="tabEstoque" class="tab-content hidden">
+        <!-- Seletor de empresa -->
+        <section class="cards-row">
+          <div class="card" style="flex:1">
+            <div style="display:flex;align-items:center;gap:12px">
+              <span class="card-label" style="margin:0">Empresa</span>
+              <select id="stCompanySelect" class="filter-select" style="font-size:14px;padding:8px 14px;min-width:300px">
+                <option value="">Selecione uma empresa...</option>
+              </select>
+            </div>
+          </div>
+        </section>
+
+        <div id="stEmpty" style="text-align:center;color:var(--text-muted);padding:60px 0;font-size:16px">
+          Selecione uma empresa para visualizar o estoque de chips.
+        </div>
+
+        <div id="stDash" class="hidden">
+          <!-- Big numbers -->
+          <section class="cards-row">
+            <div class="card accent-blue">
+              <span class="card-label">Total de Chips</span>
+              <span class="card-value" id="stTotal">-</span>
+              <div class="card-breakdown">
+                <span><span class="dot dot-blue"></span> Fisicos: <b id="stFisico">-</b></span>
+                <span><span class="dot dot-purple"></span> eSIM: <b id="stEsim">-</b></span>
+              </div>
+            </div>
+            <div class="card accent-green">
+              <span class="card-label">Disponiveis</span>
+              <span class="card-value" id="stDisponivel">-</span>
+              <div class="card-breakdown">
+                <span><span class="dot dot-blue"></span> Fisicos: <b id="stFisicoDisp">-</b></span>
+                <span><span class="dot dot-purple"></span> eSIM: <b id="stEsimDisp">-</b></span>
+              </div>
+            </div>
+            <div class="card accent-orange">
+              <span class="card-label">Associados</span>
+              <span class="card-value" id="stAssociado">-</span>
+              <div class="card-breakdown">
+                <span><span class="dot dot-blue"></span> Fisicos: <b id="stFisicoAssoc">-</b></span>
+                <span><span class="dot dot-purple"></span> eSIM: <b id="stEsimAssoc">-</b></span>
+              </div>
+            </div>
+            <div class="card accent-red">
+              <span class="card-label">Taxa de Uso</span>
+              <span class="card-value" id="stTaxaUso">-</span>
+              <span class="card-sub" id="stTaxaSub"></span>
+            </div>
+          </section>
+
+          <!-- Gráfico associações por dia -->
+          <section class="chart-section">
+            <div class="card">
+              <span class="card-label">Associacoes por Dia</span>
+              <div class="month-nav">
+                <button class="month-arrow" id="stMonthPrev">&#8249;</button>
+                <span class="month-label" id="stMonthLabel"></span>
+                <button class="month-arrow" id="stMonthNext">&#8250;</button>
+              </div>
+              <div class="chart-legend" id="stChartLegend"></div>
+              <div class="chart-container" id="stChart"></div>
+              <div class="chart-labels" id="stChartLabels"></div>
+            </div>
+          </section>
+
+          <!-- Estoque por spot -->
+          <section class="table-section">
+            <div class="card">
+              <div class="table-header">
+                <span class="card-label">Estoque por Spot</span>
+              </div>
+              <div class="table-scroll">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Spot</th>
+                      <th>Total</th>
+                      <th>Disponivel</th>
+                      <th>Associado</th>
+                      <th>Fisico Disp.</th>
+                      <th>eSIM Disp.</th>
+                      <th>% Disponivel</th>
+                    </tr>
+                  </thead>
+                  <tbody id="stSpotBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div><!-- /tabEstoque -->
+
     </div>
   </main>
 
@@ -287,6 +487,46 @@
               </tr>
             </thead>
             <tbody id="naoApnTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Spot Chips -->
+  <div class="modal-overlay hidden" id="spotChipsModal">
+    <div class="modal modal-wide">
+      <div class="modal-header">
+        <h2 id="spotChipsTitle">Chips do Spot</h2>
+        <button class="modal-close" id="spotChipsModalClose">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="table-controls" style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap">
+          <div class="filter-group">
+            <button class="filter-btn active" data-spot-status="all">Todos</button>
+            <button class="filter-btn" data-spot-status="disponivel">Disponiveis</button>
+            <button class="filter-btn" data-spot-status="associado">Associados</button>
+          </div>
+          <div class="filter-group">
+            <button class="filter-btn active" data-spot-type="all">Todos</button>
+            <button class="filter-btn" data-spot-type="fisico">Fisico</button>
+            <button class="filter-btn" data-spot-type="e-sim">eSIM</button>
+          </div>
+          <span class="result-count" id="spotChipsCount"></span>
+        </div>
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>IMSI</th>
+                <th>ICCID</th>
+                <th>Tipo</th>
+                <th>Status</th>
+                <th>Usuario</th>
+                <th>Data Associacao</th>
+              </tr>
+            </thead>
+            <tbody id="spotChipsTableBody"></tbody>
           </table>
         </div>
       </div>
