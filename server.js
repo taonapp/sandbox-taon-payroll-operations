@@ -781,7 +781,7 @@ apiRouter.get('/api/operations/summary', async (req, res) => {
         GROUP BY dia ORDER BY dia ASC
       `, [...op.codes, month]);
 
-      // Chips associados por dia (vdate)
+      // Chips associados por dia (data real de associação via SYSTEM_TIME)
       const [chipTimeline] = await pool.query(`
         WITH op_direct AS (
           SELECT DISTINCT mc.idUser
@@ -794,14 +794,20 @@ apiRouter.get('/api/operations/summary', async (req, res) => {
           SELECT u.id FROM Users u INNER JOIN op_direct od ON u.idUserParent = od.idUser WHERE u.internalUser = 0
         )
         SELECT
-          DATE_FORMAT(DATE_SUB(sc.vdate, INTERVAL 3 HOUR), '%Y-%m-%d') AS dia,
+          DATE_FORMAT(DATE_SUB(
+            (SELECT MIN(h.vdate) FROM SimCards FOR SYSTEM_TIME ALL h WHERE h.id = sc.id AND h.idUser IS NOT NULL),
+            INTERVAL 3 HOUR
+          ), '%Y-%m-%d') AS dia,
           sc.\`type\` AS tipoChip,
           COUNT(*) AS total
         FROM op_users ou
         INNER JOIN Users u ON u.id = ou.idUser
         INNER JOIN SimCards sc ON sc.idUser = u.id
         WHERE u.internalUser = 0
-          AND DATE_FORMAT(DATE_SUB(sc.vdate, INTERVAL 3 HOUR), '%Y-%m') = ?
+          AND DATE_FORMAT(DATE_SUB(
+            (SELECT MIN(h.vdate) FROM SimCards FOR SYSTEM_TIME ALL h WHERE h.id = sc.id AND h.idUser IS NOT NULL),
+            INTERVAL 3 HOUR
+          ), '%Y-%m') = ?
         GROUP BY dia, sc.\`type\` ORDER BY dia ASC
       `, [...op.codes, month]);
 
@@ -931,7 +937,7 @@ apiRouter.get('/api/operations/day', async (req, res) => {
       ORDER BY u.cdate ASC
     `, [...op.codes, date]);
 
-    // Chips associados no dia (vdate)
+    // Chips associados no dia (data real de associação via SYSTEM_TIME)
     const [chips] = await pool.query(`
       WITH op_direct AS (
         SELECT DISTINCT mc.idUser
@@ -948,13 +954,23 @@ apiRouter.get('/api/operations/day', async (req, res) => {
         sc.\`type\` AS tipoChip,
         sc.idUser,
         u.name AS userName,
-        DATE_FORMAT(DATE_SUB(sc.vdate, INTERVAL 3 HOUR), '%Y-%m-%dT%H:%i:%s') AS dataAssociacao
+        c.companyName,
+        COALESCE(s.name, 'Sem spot') AS spotName,
+        DATE_FORMAT(DATE_SUB(
+          (SELECT MIN(h.vdate) FROM SimCards FOR SYSTEM_TIME ALL h WHERE h.id = sc.id AND h.idUser IS NOT NULL),
+          INTERVAL 3 HOUR
+        ), '%Y-%m-%dT%H:%i:%s') AS dataAssociacao
       FROM op_users ou
       INNER JOIN Users u ON u.id = ou.idUser
       INNER JOIN SimCards sc ON sc.idUser = u.id
+      LEFT JOIN Company c ON c.id = sc.idCompany
+      LEFT JOIN Spots s ON s.id = sc.idSpot
       WHERE u.internalUser = 0
-        AND DATE(DATE_SUB(sc.vdate, INTERVAL 3 HOUR)) = ?
-      ORDER BY sc.vdate ASC
+        AND DATE(DATE_SUB(
+          (SELECT MIN(h.vdate) FROM SimCards FOR SYSTEM_TIME ALL h WHERE h.id = sc.id AND h.idUser IS NOT NULL),
+          INTERVAL 3 HOUR
+        )) = ?
+      ORDER BY dataAssociacao ASC
     `, [...op.codes, date]);
 
     const titulares = cadastros.filter(r => r.tipo === 'Titular').length;
@@ -1361,7 +1377,10 @@ apiRouter.get('/api/meli/chips', async (req, res) => {
         sc.iccid,
         sc.type AS tipoChip,
         CASE sc.idStatus WHEN 1 THEN 'Ativo' WHEN 2 THEN 'Inativo' ELSE CONCAT('Status ', sc.idStatus) END AS statusChip,
-        DATE_FORMAT(DATE_SUB(sc.cdate, INTERVAL 3 HOUR), '%Y-%m-%dT%H:%i:%s') AS dataAssociacao,
+        DATE_FORMAT(DATE_SUB(
+          (SELECT MIN(h.vdate) FROM SimCards FOR SYSTEM_TIME ALL h WHERE h.id = sc.id AND h.idUser IS NOT NULL),
+          INTERVAL 3 HOUR
+        ), '%Y-%m-%dT%H:%i:%s') AS dataAssociacao,
         DATE_FORMAT(DATE_SUB(apn.primeiraApn, INTERVAL 3 HOUR), '%Y-%m-%dT%H:%i:%s') AS primeiraApn,
         DATE_FORMAT(DATE_SUB(apn.ultimaApn, INTERVAL 3 HOUR), '%Y-%m-%dT%H:%i:%s') AS ultimaApn,
         apn.totalSessoes,
@@ -1420,6 +1439,10 @@ apiRouter.get('/api/stock/spot-chips', async (req, res) => {
         sc.idUser,
         u.name AS userName,
         sc.qrcodeEsim,
+        DATE_FORMAT(DATE_SUB(
+          (SELECT MIN(h.vdate) FROM SimCards FOR SYSTEM_TIME ALL h WHERE h.id = sc.id AND h.idUser IS NOT NULL),
+          INTERVAL 3 HOUR
+        ), '%Y-%m-%dT%H:%i:%s') AS dataAssociacao,
         DATE_FORMAT(DATE_SUB(sc.vdate, INTERVAL 3 HOUR), '%Y-%m-%dT%H:%i:%s') AS vdate,
         DATE_FORMAT(DATE_SUB(sc.cdate, INTERVAL 3 HOUR), '%Y-%m-%dT%H:%i:%s') AS cdate
       FROM SimCards sc
@@ -1867,7 +1890,10 @@ apiRouter.get('/api/stock/company/:id', async (req, res) => {
       `, [id]),
       pool.query(`
         SELECT
-          DATE_FORMAT(DATE_SUB(sc.vdate, INTERVAL 3 HOUR), '%Y-%m-%d') AS dia,
+          DATE_FORMAT(DATE_SUB(
+            (SELECT MIN(h.vdate) FROM SimCards FOR SYSTEM_TIME ALL h WHERE h.id = sc.id AND h.idUser IS NOT NULL),
+            INTERVAL 3 HOUR
+          ), '%Y-%m-%d') AS dia,
           sc.\`type\` AS tipoChip,
           COUNT(*) AS total
         FROM SimCards sc

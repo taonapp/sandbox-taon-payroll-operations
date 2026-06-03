@@ -115,7 +115,7 @@ function renderDay(data) {
   const chipBody = $('dayChipBody');
   chipBody.innerHTML = '';
   if (data.chips.length === 0) {
-    chipBody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">Nenhum chip associado neste dia</td></tr>';
+    chipBody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-muted)">Nenhum chip associado neste dia</td></tr>';
   } else {
     data.chips.forEach(r => {
       const tr = document.createElement('tr');
@@ -127,6 +127,8 @@ function renderDay(data) {
         <td>${r.imsi || '-'}</td>
         <td style="font-size:11px">${r.iccid || '-'}</td>
         <td>${tipoLabel}</td>
+        <td>${r.companyName || '-'}</td>
+        <td>${r.spotName || '-'}</td>
         <td>${formatTime(r.dataAssociacao)}</td>
       `;
       chipBody.appendChild(tr);
