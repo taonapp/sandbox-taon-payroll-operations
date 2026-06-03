@@ -63,39 +63,51 @@
   <main class="content">
     <header class="page-header">
       <h1>Novas Ativações</h1>
-      <div class="month-nav">
-        <button class="btn-nav" id="prevMonth">&larr;</button>
-        <span class="month-label" id="monthLabel"></span>
-        <button class="btn-nav" id="nextMonth">&rarr;</button>
-      </div>
       <div id="refreshContainer"></div>
     </header>
 
-    <!-- Seção Hoje -->
-    <section class="today-section hidden" id="todaySection">
-      <div class="today-header">
-        <h2 class="today-title">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-          Ativações Hoje
-        </h2>
-        <span class="today-date" id="todayDate"></span>
-      </div>
+    <!-- Navegação de data -->
+    <div class="day-nav">
+      <button class="btn-nav" id="prevDay">&larr;</button>
+      <span class="day-label" id="dayLabel"></span>
+      <button class="btn-nav" id="nextDay">&rarr;</button>
+      <button class="btn-today" id="btnToday">Hoje</button>
+    </div>
 
-      <span class="loading" id="todayLoading">Carregando dados de hoje...</span>
+    <!-- Abas por operação -->
+    <div class="tab-bar">
+      <button class="tab-btn active" data-op="meli">Meli</button>
+      <button class="tab-btn" data-op="hagana">Haganá</button>
+      <button class="tab-btn" data-op="aster">Aster</button>
+    </div>
 
-      <div id="todayContent" class="hidden">
-        <div class="cards-row" style="margin-bottom: 16px;">
-          <div class="card accent-blue">
-            <span class="card-label">Total Hoje</span>
-            <span class="card-value" id="todayCount">-</span>
-            <div class="card-breakdown">
-              <span><span class="dot dot-blue"></span> Titulares: <b id="todayTit">-</b></span>
-              <span><span class="dot dot-purple"></span> Dependentes: <b id="todayDep">-</b></span>
-            </div>
+    <div id="dayLoading" class="loading">Carregando...</div>
+
+    <div id="dayContent" class="hidden">
+      <!-- Big numbers -->
+      <section class="cards-row">
+        <div class="card accent-blue">
+          <span class="card-label">Cadastros no Dia</span>
+          <span class="card-value" id="dayCadastros">-</span>
+          <div class="card-breakdown">
+            <span><span class="dot dot-blue"></span> Titulares: <b id="dayTit">-</b></span>
+            <span><span class="dot dot-purple"></span> Dependentes: <b id="dayDep">-</b></span>
           </div>
         </div>
+        <div class="card accent-green">
+          <span class="card-label">Chips Associados no Dia</span>
+          <span class="card-value" id="dayChips">-</span>
+          <div class="card-breakdown">
+            <span><span class="dot dot-blue"></span> Fisicos: <b id="dayChipsFis">-</b></span>
+            <span><span class="dot dot-purple"></span> eSIM: <b id="dayChipsEsim">-</b></span>
+          </div>
+        </div>
+      </section>
 
+      <!-- Tabela de cadastros -->
+      <section class="table-section">
         <div class="card">
+          <span class="card-label">Cadastros</span>
           <div class="table-scroll">
             <table class="data-table">
               <thead>
@@ -105,94 +117,39 @@
                   <th>CPF</th>
                   <th>Codigo</th>
                   <th>Tipo</th>
+                  <th>Plano</th>
                   <th>Valor</th>
                   <th>Empresa</th>
+                  <th>Hora</th>
                 </tr>
               </thead>
-              <tbody id="todayBody"></tbody>
+              <tbody id="dayCadBody"></tbody>
             </table>
           </div>
         </div>
-      </div>
-    </section>
-
-    <div id="loading" class="loading">Carregando dados...</div>
-
-    <div id="page" class="hidden">
-      <!-- Summary cards -->
-      <section class="cards-row">
-        <div class="card accent-blue">
-          <span class="card-label">Total no Mês</span>
-          <span class="card-value" id="totalMes">-</span>
-          <div class="card-breakdown">
-            <span><span class="dot dot-blue"></span> Titulares: <b id="titMes">-</b></span>
-            <span><span class="dot dot-purple"></span> Dependentes: <b id="depMes">-</b></span>
-          </div>
-        </div>
-        <div class="card accent-green">
-          <span class="card-label">Média Diária</span>
-          <span class="card-value" id="mediaDia">-</span>
-        </div>
-        <div class="card accent-orange">
-          <span class="card-label">Melhor Dia</span>
-          <span class="card-value" id="melhorDiaVal">-</span>
-          <span class="card-sub" id="melhorDiaDate">-</span>
-        </div>
       </section>
 
-
-      <!-- Chart -->
-      <section class="chart-section">
-        <div class="card">
-          <span class="card-label">Ativações por Dia</span>
-          <div class="chart-container" id="chart"></div>
-        </div>
-      </section>
-
-      <!-- Daily table -->
+      <!-- Tabela de chips -->
       <section class="table-section">
         <div class="card">
-          <span class="card-label">Detalhamento Diário</span>
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>Dia</th>
-                <th>Total</th>
-                <th>Titulares</th>
-                <th>Dependentes</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody id="tableBody"></tbody>
-          </table>
-        </div>
-      </section>
-
-      <!-- Detail modal -->
-      <div class="modal-overlay hidden" id="modal">
-        <div class="modal">
-          <div class="modal-header">
-            <h2 id="modalTitle">Detalhes</h2>
-            <button class="btn-close" id="modalClose">&times;</button>
-          </div>
-          <div class="modal-body">
+          <span class="card-label">Chips Associados</span>
+          <div class="table-scroll">
             <table class="data-table">
               <thead>
                 <tr>
-                  <th>ID</th>
+                  <th>ID Usuario</th>
                   <th>Nome</th>
-                  <th>CPF</th>
-                  <th>Codigo</th>
+                  <th>IMSI</th>
+                  <th>ICCID</th>
                   <th>Tipo</th>
-                  <th>Valor</th>
-                  <th>Empresa</th>
+                  <th>Hora</th>
                 </tr>
               </thead>
-              <tbody id="modalBody"></tbody>
+              <tbody id="dayChipBody"></tbody>
             </table>
           </div>
         </div>
-      </div>
+      </section>
     </div>
   </main>
 
