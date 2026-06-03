@@ -738,6 +738,251 @@ apiRouter.get('/api/users', async (req, res) => {
   }
 });
 
+// Operações — dashboard por código de ativação
+const OPERATIONS = {
+  meli: { codes: ['MELI26'], label: 'Meli' },
+  hagana: { codes: ['HAGANADFGERAL', 'HAGANADF'], label: 'Haganá' },
+  aster: { codes: ['ASTERDF'], label: 'Aster' },
+};
+
+apiRouter.get('/api/operations/summary', async (req, res) => {
+  try {
+    const month = req.query.month;
+    if (!month || !/^\d{4}-\d{2}$/.test(month)) {
+      return res.status(400).json({ error: 'Parâmetro month obrigatório (YYYY-MM)' });
+    }
+    const startDate = `${month}-01`;
+
+    const results = {};
+    for (const [key, op] of Object.entries(OPERATIONS)) {
+      const placeholders = op.codes.map(() => '?').join(',');
+
+      // Cadastros por dia (cdate do user)
+      const [timeline] = await pool.query(`
+        WITH op_direct AS (
+          SELECT DISTINCT mc.idUser
+          FROM MgmChain mc
+          WHERE mc.mgmInvCode IN (${placeholders}) AND mc.nivel = 1
+        ),
+        op_users AS (
+          SELECT idUser FROM op_direct
+          UNION
+          SELECT u.id FROM Users u INNER JOIN op_direct od ON u.idUserParent = od.idUser WHERE u.internalUser = 0
+        )
+        SELECT
+          DATE_FORMAT(DATE_SUB(u.cdate, INTERVAL 3 HOUR), '%Y-%m-%d') AS dia,
+          COUNT(*) AS total,
+          SUM(CASE WHEN u.idUserParent IS NULL THEN 1 ELSE 0 END) AS titulares,
+          SUM(CASE WHEN u.idUserParent IS NOT NULL THEN 1 ELSE 0 END) AS dependentes
+        FROM op_users ou
+        INNER JOIN Users u ON u.id = ou.idUser
+        WHERE u.internalUser = 0
+          AND DATE_FORMAT(DATE_SUB(u.cdate, INTERVAL 3 HOUR), '%Y-%m') = ?
+        GROUP BY dia ORDER BY dia ASC
+      `, [...op.codes, month]);
+
+      // Chips associados por dia (vdate)
+      const [chipTimeline] = await pool.query(`
+        WITH op_direct AS (
+          SELECT DISTINCT mc.idUser
+          FROM MgmChain mc
+          WHERE mc.mgmInvCode IN (${placeholders}) AND mc.nivel = 1
+        ),
+        op_users AS (
+          SELECT idUser FROM op_direct
+          UNION
+          SELECT u.id FROM Users u INNER JOIN op_direct od ON u.idUserParent = od.idUser WHERE u.internalUser = 0
+        )
+        SELECT
+          DATE_FORMAT(DATE_SUB(sc.vdate, INTERVAL 3 HOUR), '%Y-%m-%d') AS dia,
+          sc.\`type\` AS tipoChip,
+          COUNT(*) AS total
+        FROM op_users ou
+        INNER JOIN Users u ON u.id = ou.idUser
+        INNER JOIN SimCards sc ON sc.idUser = u.id
+        WHERE u.internalUser = 0
+          AND DATE_FORMAT(DATE_SUB(sc.vdate, INTERVAL 3 HOUR), '%Y-%m') = ?
+        GROUP BY dia, sc.\`type\` ORDER BY dia ASC
+      `, [...op.codes, month]);
+
+      // Totals
+      const [totals] = await pool.query(`
+        WITH op_direct AS (
+          SELECT DISTINCT mc.idUser
+          FROM MgmChain mc
+          WHERE mc.mgmInvCode IN (${placeholders}) AND mc.nivel = 1
+        ),
+        op_users AS (
+          SELECT idUser FROM op_direct
+          UNION
+          SELECT u.id FROM Users u INNER JOIN op_direct od ON u.idUserParent = od.idUser WHERE u.internalUser = 0
+        )
+        SELECT
+          COUNT(*) AS totalCadastrados,
+          SUM(CASE WHEN u.idUserParent IS NULL THEN 1 ELSE 0 END) AS titulares,
+          SUM(CASE WHEN u.idUserParent IS NOT NULL THEN 1 ELSE 0 END) AS dependentes,
+          SUM(CASE WHEN u.status = 'enabled' THEN 1 ELSE 0 END) AS ativos,
+          (SELECT COUNT(*) FROM SimCards sc2 INNER JOIN op_users ou2 ON ou2.idUser = sc2.idUser) AS totalChips,
+          (SELECT SUM(CASE WHEN sc3.\`type\` = 'fisico' THEN 1 ELSE 0 END) FROM SimCards sc3 INNER JOIN op_users ou3 ON ou3.idUser = sc3.idUser) AS chipsFisicos,
+          (SELECT SUM(CASE WHEN sc4.\`type\` = 'e-sim' THEN 1 ELSE 0 END) FROM SimCards sc4 INNER JOIN op_users ou4 ON ou4.idUser = sc4.idUser) AS chipsEsim,
+          (SELECT COUNT(*) FROM op_users ou5 INNER JOIN Users u5 ON u5.id = ou5.idUser WHERE u5.internalUser = 0 AND NOT EXISTS (SELECT 1 FROM SimCards sc5 WHERE sc5.idUser = u5.id)) AS semChip
+        FROM op_users ou
+        INNER JOIN Users u ON u.id = ou.idUser
+        WHERE u.internalUser = 0
+      `, op.codes);
+
+      // Hoje
+      const [today] = await pool.query(`
+        WITH op_direct AS (
+          SELECT DISTINCT mc.idUser
+          FROM MgmChain mc
+          WHERE mc.mgmInvCode IN (${placeholders}) AND mc.nivel = 1
+        ),
+        op_users AS (
+          SELECT idUser FROM op_direct
+          UNION
+          SELECT u.id FROM Users u INNER JOIN op_direct od ON u.idUserParent = od.idUser WHERE u.internalUser = 0
+        )
+        SELECT
+          u.id AS idUser, u.name,
+          CASE WHEN u.idUserParent IS NULL THEN 'Titular' ELSE 'Dependente' END AS tipo,
+          mc2.mgmInvCode AS codigo,
+          DATE_FORMAT(DATE_SUB(u.cdate, INTERVAL 3 HOUR), '%Y-%m-%dT%H:%i:%s') AS dataCadastro,
+          (SELECT sc.\`type\` FROM SimCards sc WHERE sc.idUser = u.id LIMIT 1) AS tipoChip,
+          (SELECT CASE WHEN sc2.id IS NOT NULL THEN 'Sim' ELSE 'Nao' END FROM SimCards sc2 WHERE sc2.idUser = u.id LIMIT 1) AS temChip
+        FROM op_users ou
+        INNER JOIN Users u ON u.id = ou.idUser
+        LEFT JOIN MgmChain mc2 ON mc2.idUser = u.id AND mc2.nivel = 1
+        WHERE u.internalUser = 0
+          AND DATE(DATE_SUB(u.cdate, INTERVAL 3 HOUR)) = CURDATE()
+        ORDER BY u.cdate DESC
+      `, op.codes);
+
+      // Cadastros do mês (total)
+      const totalMes = timeline.reduce((s, d) => s + Number(d.total), 0);
+      const titMes = timeline.reduce((s, d) => s + Number(d.titulares), 0);
+      const depMes = timeline.reduce((s, d) => s + Number(d.dependentes), 0);
+      const chipsNoMes = chipTimeline.reduce((s, d) => s + Number(d.total), 0);
+
+      results[key] = {
+        label: op.label,
+        codes: op.codes,
+        totals: totals[0],
+        month: { total: totalMes, titulares: titMes, dependentes: depMes, chips: chipsNoMes },
+        timeline,
+        chipTimeline,
+        today,
+      };
+    }
+
+    res.json(results);
+  } catch (err) {
+    console.error('Operations summary error:', err);
+    res.status(500).json({ error: 'Erro ao consultar operações' });
+  }
+});
+
+// Ativações do dia por operação
+apiRouter.get('/api/operations/day', async (req, res) => {
+  try {
+    const date = req.query.date;
+    const opKey = req.query.op;
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'date obrigatório (YYYY-MM-DD)' });
+
+    const op = OPERATIONS[opKey];
+    if (!op) return res.status(400).json({ error: 'op inválido' });
+
+    const placeholders = op.codes.map(() => '?').join(',');
+
+    // Cadastros do dia
+    const [cadastros] = await pool.query(`
+      WITH op_direct AS (
+        SELECT DISTINCT mc.idUser
+        FROM MgmChain mc
+        WHERE mc.mgmInvCode IN (${placeholders}) AND mc.nivel = 1
+      ),
+      op_users AS (
+        SELECT idUser FROM op_direct
+        UNION
+        SELECT u.id FROM Users u INNER JOIN op_direct od ON u.idUserParent = od.idUser WHERE u.internalUser = 0
+      )
+      SELECT
+        u.id AS idUser, u.name, u.cpf,
+        CASE WHEN u.idUserParent IS NULL THEN 'Titular' ELSE 'Dependente' END AS tipo,
+        DATE_FORMAT(DATE_SUB(u.cdate, INTERVAL 3 HOUR), '%Y-%m-%dT%H:%i:%s') AS dataCadastro,
+        mc2.mgmInvCode AS codigo,
+        (SELECT p.name FROM RecurringPurchasesConfig rpc
+         INNER JOIN Products p ON p.id = rpc.idProduct
+         WHERE rpc.idUser = u.id AND rpc.idStatus = 1
+         ORDER BY rpc.cdate DESC LIMIT 1) AS plano,
+        (SELECT rpc2.amount FROM RecurringPurchasesConfig rpc2
+         INNER JOIN Products p2 ON p2.id = rpc2.idProduct
+         WHERE rpc2.idUser = u.id AND rpc2.idStatus = 1
+         ORDER BY rpc2.cdate DESC LIMIT 1) AS valor,
+        (SELECT c.companyName FROM RecurringPurchasesConfig rpc3
+         LEFT JOIN Company c ON c.id = rpc3.idCompany
+         WHERE rpc3.idUser = u.id AND rpc3.idStatus = 1
+         ORDER BY rpc3.cdate DESC LIMIT 1) AS empresa
+      FROM op_users ou
+      INNER JOIN Users u ON u.id = ou.idUser
+      LEFT JOIN MgmChain mc2 ON mc2.idUser = u.id AND mc2.nivel = 1
+      WHERE u.internalUser = 0
+        AND DATE(DATE_SUB(u.cdate, INTERVAL 3 HOUR)) = ?
+      ORDER BY u.cdate ASC
+    `, [...op.codes, date]);
+
+    // Chips associados no dia (vdate)
+    const [chips] = await pool.query(`
+      WITH op_direct AS (
+        SELECT DISTINCT mc.idUser
+        FROM MgmChain mc
+        WHERE mc.mgmInvCode IN (${placeholders}) AND mc.nivel = 1
+      ),
+      op_users AS (
+        SELECT idUser FROM op_direct
+        UNION
+        SELECT u.id FROM Users u INNER JOIN op_direct od ON u.idUserParent = od.idUser WHERE u.internalUser = 0
+      )
+      SELECT
+        sc.id AS idChip, sc.imsi, sc.iccid,
+        sc.\`type\` AS tipoChip,
+        sc.idUser,
+        u.name AS userName,
+        DATE_FORMAT(DATE_SUB(sc.vdate, INTERVAL 3 HOUR), '%Y-%m-%dT%H:%i:%s') AS dataAssociacao
+      FROM op_users ou
+      INNER JOIN Users u ON u.id = ou.idUser
+      INNER JOIN SimCards sc ON sc.idUser = u.id
+      WHERE u.internalUser = 0
+        AND DATE(DATE_SUB(sc.vdate, INTERVAL 3 HOUR)) = ?
+      ORDER BY sc.vdate ASC
+    `, [...op.codes, date]);
+
+    const titulares = cadastros.filter(r => r.tipo === 'Titular').length;
+    const dependentes = cadastros.filter(r => r.tipo === 'Dependente').length;
+    const chipsFisicos = chips.filter(r => r.tipoChip === 'fisico').length;
+    const chipsEsim = chips.filter(r => r.tipoChip === 'e-sim').length;
+
+    res.json({
+      date,
+      op: opKey,
+      label: op.label,
+      summary: {
+        cadastros: cadastros.length,
+        titulares,
+        dependentes,
+        chips: chips.length,
+        chipsFisicos,
+        chipsEsim,
+      },
+      cadastros,
+      chips,
+    });
+  } catch (err) {
+    console.error('Operations day error:', err);
+    res.status(500).json({ error: 'Erro ao consultar ativações do dia' });
+  }
+});
+
 // Novas ativações por dia — aceita ?month=YYYY-MM
 apiRouter.get('/api/activations', async (req, res) => {
   try {

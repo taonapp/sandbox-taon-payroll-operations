@@ -3,8 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dashboard Desconto em Folha - Payroll Ops</title>
+  <title>Dashboard - Payroll Ops</title>
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="activations.css">
   <link rel="stylesheet" href="refresh.css">
 </head>
 <body>
@@ -61,77 +62,92 @@
 
   <main class="content">
     <header class="page-header">
-      <h1>Dashboard Desconto em Folha</h1>
-      <span class="period" id="period"></span>
+      <h1>Dashboard</h1>
       <div id="refreshContainer"></div>
     </header>
 
-    <div id="loading" class="loading">Carregando dados...</div>
+    <!-- Abas principais -->
+    <div class="tab-bar">
+      <button class="tab-btn active" data-main-tab="geral">Geral</button>
+      <button class="tab-btn" data-main-tab="folha">Desconto em Folha</button>
+    </div>
 
-    <div id="dashboard" class="dashboard hidden">
-      <!-- Tabs -->
-      <div class="tabs">
-        <button class="tab active" data-view="total">Base Total do Mes</button>
-        <button class="tab" data-view="cobranca">Cobranca do Mes (corte dia 20)</button>
-        <button class="tab" data-view="todos">Todos os Cadastrados</button>
+    <!-- TAB GERAL (Operações) -->
+    <div id="tabGeral" class="main-tab-content">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+        <div class="month-nav">
+          <button class="btn-nav" id="prevMonth">&larr;</button>
+          <span class="month-label" id="monthLabel"></span>
+          <button class="btn-nav" id="nextMonth">&rarr;</button>
+        </div>
       </div>
+      <div id="opsLoading" class="loading">Carregando dados...</div>
+      <div id="operationSections" class="hidden"></div>
+    </div>
 
-      <!-- Big numbers -->
-      <section class="cards-row">
-        <a href="/payroll-ops/users.html" class="card accent-blue card-link">
-          <span class="card-label">Total de Linhas</span>
-          <span class="card-value" id="totalLinhas">-</span>
-          <div class="card-breakdown">
-            <span><span class="dot dot-blue"></span> Titulares: <b id="titulares">-</b></span>
-            <span><span class="dot dot-purple"></span> Dependentes: <b id="dependentes">-</b></span>
-          </div>
-        </a>
-
-        <div class="card accent-green">
-          <span class="card-label">Receita Potencial</span>
-          <span class="card-value" id="receitaPotencial">-</span>
-          <div class="card-breakdown">
-            <span><span class="dot dot-blue"></span> Titulares: <b id="receitaTitulares">-</b></span>
-            <span><span class="dot dot-purple"></span> Dependentes: <b id="receitaDependentes">-</b></span>
-          </div>
+    <!-- TAB DESCONTO EM FOLHA -->
+    <div id="tabFolha" class="main-tab-content hidden">
+      <span class="period" id="period"></span>
+      <div id="folhaLoading" class="loading">Carregando dados...</div>
+      <div id="dashboard" class="dashboard hidden">
+        <div class="tabs">
+          <button class="tab active" data-view="total">Base Total do Mes</button>
+          <button class="tab" data-view="cobranca">Cobranca do Mes (corte dia 20)</button>
+          <button class="tab" data-view="todos">Todos os Cadastrados</button>
         </div>
 
-        <div class="card accent-orange">
-          <span class="card-label">Ticket Medio</span>
-          <span class="card-value" id="ticketMedio">-</span>
-          <div class="card-breakdown">
-            <span><span class="dot dot-blue"></span> Titulares: <b id="ticketMedioTitulares">-</b></span>
-            <span><span class="dot dot-purple"></span> Dependentes: <b id="ticketMedioDependentes">-</b></span>
+        <section class="cards-row">
+          <a href="/payroll-ops/users.html" class="card accent-blue card-link">
+            <span class="card-label">Total de Linhas</span>
+            <span class="card-value" id="totalLinhas">-</span>
+            <div class="card-breakdown">
+              <span><span class="dot dot-blue"></span> Titulares: <b id="titulares">-</b></span>
+              <span><span class="dot dot-purple"></span> Dependentes: <b id="dependentes">-</b></span>
+            </div>
+          </a>
+          <div class="card accent-green">
+            <span class="card-label">Receita Potencial</span>
+            <span class="card-value" id="receitaPotencial">-</span>
+            <div class="card-breakdown">
+              <span><span class="dot dot-blue"></span> Titulares: <b id="receitaTitulares">-</b></span>
+              <span><span class="dot dot-purple"></span> Dependentes: <b id="receitaDependentes">-</b></span>
+            </div>
           </div>
-        </div>
-      </section>
+          <div class="card accent-orange">
+            <span class="card-label">Ticket Medio</span>
+            <span class="card-value" id="ticketMedio">-</span>
+            <div class="card-breakdown">
+              <span><span class="dot dot-blue"></span> Titulares: <b id="ticketMedioTitulares">-</b></span>
+              <span><span class="dot dot-purple"></span> Dependentes: <b id="ticketMedioDependentes">-</b></span>
+            </div>
+          </div>
+        </section>
 
-      <!-- Barras proporcionais -->
-      <section class="cards-row">
-        <div class="card card-bar">
-          <span class="card-label">Composicao - Linhas</span>
-          <div class="bar-container">
-            <div class="bar bar-titulares" id="barLinhasTit"></div>
-            <div class="bar bar-dependentes" id="barLinhasDep"></div>
+        <section class="cards-row">
+          <div class="card card-bar">
+            <span class="card-label">Composicao - Linhas</span>
+            <div class="bar-container">
+              <div class="bar bar-titulares" id="barLinhasTit"></div>
+              <div class="bar bar-dependentes" id="barLinhasDep"></div>
+            </div>
+            <div class="bar-legend">
+              <span><span class="dot dot-blue"></span> Titulares <b id="pctLinhasTit">-</b></span>
+              <span><span class="dot dot-purple"></span> Dependentes <b id="pctLinhasDep">-</b></span>
+            </div>
           </div>
-          <div class="bar-legend">
-            <span><span class="dot dot-blue"></span> Titulares <b id="pctLinhasTit">-</b></span>
-            <span><span class="dot dot-purple"></span> Dependentes <b id="pctLinhasDep">-</b></span>
+          <div class="card card-bar">
+            <span class="card-label">Composicao - Receita</span>
+            <div class="bar-container">
+              <div class="bar bar-titulares" id="barReceitaTit"></div>
+              <div class="bar bar-dependentes" id="barReceitaDep"></div>
+            </div>
+            <div class="bar-legend">
+              <span><span class="dot dot-blue"></span> Titulares <b id="pctReceitaTit">-</b></span>
+              <span><span class="dot dot-purple"></span> Dependentes <b id="pctReceitaDep">-</b></span>
+            </div>
           </div>
-        </div>
-
-        <div class="card card-bar">
-          <span class="card-label">Composicao - Receita</span>
-          <div class="bar-container">
-            <div class="bar bar-titulares" id="barReceitaTit"></div>
-            <div class="bar bar-dependentes" id="barReceitaDep"></div>
-          </div>
-          <div class="bar-legend">
-            <span><span class="dot dot-blue"></span> Titulares <b id="pctReceitaTit">-</b></span>
-            <span><span class="dot dot-purple"></span> Dependentes <b id="pctReceitaDep">-</b></span>
-          </div>
-        </div>
-      </section>
+        </section>
+      </div>
     </div>
   </main>
 

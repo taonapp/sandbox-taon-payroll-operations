@@ -1,261 +1,144 @@
 const $ = (id) => document.getElementById(id);
 
-let currentYear, currentMonth;
-
-function init() {
-  const now = new Date();
-  currentYear = now.getFullYear();
-  currentMonth = now.getMonth();
-
-  $('prevMonth').addEventListener('click', () => changeMonth(-1));
-  $('nextMonth').addEventListener('click', () => changeMonth(1));
-  $('modalClose').addEventListener('click', closeModal);
-  $('modal').addEventListener('click', (e) => {
-    if (e.target === $('modal')) closeModal();
-  });
-
-  const todayDateEl = $('todayDate');
-  if (todayDateEl) {
-    todayDateEl.textContent = now.toLocaleDateString('pt-BR', {
-      weekday: 'long', day: '2-digit', month: 'long', year: 'numeric'
-    });
-  }
-
-  loadToday();
-  loadMonth();
-}
-
-function changeMonth(delta) {
-  currentMonth += delta;
-  if (currentMonth > 11) { currentMonth = 0; currentYear++; }
-  if (currentMonth < 0) { currentMonth = 11; currentYear--; }
-  loadMonth();
-}
-
-function monthKey() {
-  return `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
-}
-
-function formatMonthLabel() {
-  const d = new Date(currentYear, currentMonth, 1);
-  return d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
-}
-
-function formatDay(dateStr) {
-  const d = new Date(dateStr + 'T12:00:00');
-  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-}
-
-function formatWeekday(dateStr) {
-  const d = new Date(dateStr + 'T12:00:00');
-  return d.toLocaleDateString('pt-BR', { weekday: 'short' });
-}
-
-function formatCurrency(n) {
-  return Number(n || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
+let selectedDate = '';
+let selectedOp = 'meli';
 
 function todayKey() {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 }
 
-function renderDetailRow(r) {
-  const tr = document.createElement('tr');
-  tr.innerHTML = `
-    <td>${r.idUser}</td>
-    <td>${r.name || '-'}</td>
-    <td>${r.cpf || '-'}</td>
-    <td>${r.codigo || '-'}</td>
-    <td><span style="color:${r.tipo === 'Titular' ? 'var(--blue)' : 'var(--purple)'}">${r.tipo}</span></td>
-    <td>${formatCurrency(r.amount)}</td>
-    <td>${r.companyName || '-'}</td>
-  `;
-  return tr;
+function shiftDate(dateStr, delta) {
+  const d = new Date(dateStr + 'T12:00:00');
+  d.setDate(d.getDate() + delta);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-let todayLoaded = false;
+function formatDayLabel(dateStr) {
+  const d = new Date(dateStr + 'T12:00:00');
+  return d.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+}
 
-async function loadToday() {
-  const today = todayKey();
-  const section = $('todaySection');
-  const tbody = $('todayBody');
-  const countEl = $('todayCount');
-  const titEl = $('todayTit');
-  const depEl = $('todayDep');
-  const loadingEl = $('todayLoading');
-  const contentEl = $('todayContent');
+function formatTime(d) {
+  if (!d) return '-';
+  const dt = new Date(d);
+  return dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+}
 
-  const isFirstLoad = !todayLoaded;
-  if (isFirstLoad) {
-    loadingEl.classList.remove('hidden');
-    contentEl.classList.add('hidden');
-  }
+function formatCurrency(n) {
+  return Number(n || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+// Navigation
+$('prevDay').addEventListener('click', () => {
+  selectedDate = shiftDate(selectedDate, -1);
+  loadDay();
+});
+
+$('nextDay').addEventListener('click', () => {
+  selectedDate = shiftDate(selectedDate, 1);
+  loadDay();
+});
+
+$('btnToday').addEventListener('click', () => {
+  selectedDate = todayKey();
+  loadDay();
+});
+
+// Tabs
+document.querySelectorAll('[data-op]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('[data-op]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    selectedOp = btn.dataset.op;
+    loadDay();
+  });
+});
+
+async function loadDay() {
+  $('dayLabel').textContent = formatDayLabel(selectedDate);
+  $('btnToday').classList.toggle('hidden', selectedDate === todayKey());
+
+  $('dayLoading').classList.remove('hidden');
+  $('dayContent').classList.add('hidden');
 
   try {
-    const res = await fetch(`/payroll-ops/api/activations/details?date=${today}`);
-    if (!res.ok) throw new Error('Erro');
-    const rows = await res.json();
+    const res = await fetch(`/payroll-ops/api/operations/day?date=${selectedDate}&op=${selectedOp}`);
+    if (!res.ok) throw new Error('API error');
+    const data = await res.json();
 
-    const titulares = rows.filter(r => r.tipo === 'Titular').length;
-    const dependentes = rows.filter(r => r.tipo === 'Dependente').length;
+    renderDay(data);
 
-    countEl.textContent = rows.length.toLocaleString('pt-BR');
-    titEl.textContent = titulares.toLocaleString('pt-BR');
-    depEl.textContent = dependentes.toLocaleString('pt-BR');
-
-    tbody.innerHTML = '';
-    if (rows.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted)">Nenhuma ativacao hoje</td></tr>';
-    } else {
-      rows.forEach(r => tbody.appendChild(renderDetailRow(r)));
-    }
-
-    if (isFirstLoad) {
-      loadingEl.classList.add('hidden');
-      contentEl.classList.remove('hidden');
-      section.classList.remove('hidden');
-      todayLoaded = true;
-    }
+    $('dayLoading').classList.add('hidden');
+    $('dayContent').classList.remove('hidden');
   } catch (err) {
-    if (isFirstLoad) {
-      loadingEl.textContent = 'Erro ao carregar dados de hoje.';
-    }
+    $('dayLoading').textContent = 'Erro ao carregar dados.';
     console.error(err);
+  }
+}
+
+function renderDay(data) {
+  const s = data.summary;
+
+  $('dayCadastros').textContent = s.cadastros.toLocaleString('pt-BR');
+  $('dayTit').textContent = s.titulares.toLocaleString('pt-BR');
+  $('dayDep').textContent = s.dependentes.toLocaleString('pt-BR');
+
+  $('dayChips').textContent = s.chips.toLocaleString('pt-BR');
+  $('dayChipsFis').textContent = s.chipsFisicos.toLocaleString('pt-BR');
+  $('dayChipsEsim').textContent = s.chipsEsim.toLocaleString('pt-BR');
+
+  // Cadastros table
+  const cadBody = $('dayCadBody');
+  cadBody.innerHTML = '';
+  if (data.cadastros.length === 0) {
+    cadBody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text-muted)">Nenhum cadastro neste dia</td></tr>';
+  } else {
+    data.cadastros.forEach(r => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${r.idUser}</td>
+        <td>${r.name || '-'}</td>
+        <td>${r.cpf || '-'}</td>
+        <td>${r.codigo || '-'}</td>
+        <td><span style="color:${r.tipo === 'Titular' ? 'var(--blue)' : 'var(--purple)'}">${r.tipo}</span></td>
+        <td>${r.plano || '-'}</td>
+        <td>${r.valor ? formatCurrency(r.valor) : '-'}</td>
+        <td>${r.empresa || '-'}</td>
+        <td>${formatTime(r.dataCadastro)}</td>
+      `;
+      cadBody.appendChild(tr);
+    });
+  }
+
+  // Chips table
+  const chipBody = $('dayChipBody');
+  chipBody.innerHTML = '';
+  if (data.chips.length === 0) {
+    chipBody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">Nenhum chip associado neste dia</td></tr>';
+  } else {
+    data.chips.forEach(r => {
+      const tr = document.createElement('tr');
+      const tipoLabel = r.tipoChip === 'fisico' ? '<span style="color:var(--blue)">Físico</span>'
+        : r.tipoChip === 'e-sim' ? '<span style="color:var(--purple)">eSIM</span>' : '-';
+      tr.innerHTML = `
+        <td>${r.idUser}</td>
+        <td>${r.userName || '-'}</td>
+        <td>${r.imsi || '-'}</td>
+        <td style="font-size:11px">${r.iccid || '-'}</td>
+        <td>${tipoLabel}</td>
+        <td>${formatTime(r.dataAssociacao)}</td>
+      `;
+      chipBody.appendChild(tr);
+    });
   }
 }
 
 async function loadAll() {
-  await Promise.all([loadToday(), loadMonth()]);
+  await loadDay();
 }
 
-let monthLoaded = false;
-
-async function loadMonth() {
-  $('monthLabel').textContent = formatMonthLabel();
-  const isFirstLoad = !monthLoaded;
-  if (isFirstLoad) {
-    $('loading').classList.remove('hidden');
-    $('page').classList.add('hidden');
-  }
-
-  try {
-    const res = await fetch(`/payroll-ops/api/activations?month=${monthKey()}`);
-    if (!res.ok) throw new Error('Erro na API');
-    const data = await res.json();
-
-    render(data);
-
-    if (isFirstLoad) {
-      $('loading').classList.add('hidden');
-      $('page').classList.remove('hidden');
-      monthLoaded = true;
-    }
-  } catch (err) {
-    if (isFirstLoad) {
-      $('loading').textContent = 'Erro ao carregar dados.';
-    }
-    console.error(err);
-  }
-}
-
-function render(data) {
-  const totalMes = data.reduce((s, d) => s + Number(d.total), 0);
-  const titMes = data.reduce((s, d) => s + Number(d.titulares), 0);
-  const depMes = data.reduce((s, d) => s + Number(d.dependentes), 0);
-  const diasComDados = data.length || 1;
-
-  $('totalMes').textContent = totalMes.toLocaleString('pt-BR');
-  $('titMes').textContent = titMes.toLocaleString('pt-BR');
-  $('depMes').textContent = depMes.toLocaleString('pt-BR');
-  $('mediaDia').textContent = (totalMes / diasComDados).toFixed(1);
-
-  if (data.length > 0) {
-    const best = data.reduce((a, b) => b.total > a.total ? b : a);
-    $('melhorDiaVal').textContent = best.total.toLocaleString('pt-BR');
-    $('melhorDiaDate').textContent = formatDay(best.dia) + ' (' + formatWeekday(best.dia) + ')';
-  } else {
-    $('melhorDiaVal').textContent = '-';
-    $('melhorDiaDate').textContent = 'Sem dados';
-  }
-
-  // Chart
-  const maxVal = Math.max(...data.map(d => d.total), 1);
-  const chart = $('chart');
-  chart.innerHTML = '';
-
-  data.forEach(d => {
-    const wrap = document.createElement('div');
-    wrap.className = 'chart-bar-wrap';
-
-    const valLabel = document.createElement('span');
-    valLabel.className = 'chart-bar-value';
-    valLabel.textContent = d.total;
-
-    const bar = document.createElement('div');
-    bar.className = 'chart-bar';
-    bar.style.height = Math.max((d.total / maxVal) * 140, 2) + 'px';
-    bar.title = `${formatDay(d.dia)}: ${d.total} ativações`;
-    bar.addEventListener('click', () => showDetails(d.dia));
-
-    const label = document.createElement('span');
-    label.className = 'chart-bar-label';
-    label.textContent = new Date(d.dia + 'T12:00:00').getDate();
-
-    wrap.appendChild(valLabel);
-    wrap.appendChild(bar);
-    wrap.appendChild(label);
-    chart.appendChild(wrap);
-  });
-
-  // Table
-  const tbody = $('tableBody');
-  tbody.innerHTML = '';
-
-  data.forEach(d => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td>${formatDay(d.dia)} <span style="color:var(--text-muted)">${formatWeekday(d.dia)}</span></td>
-      <td><b>${d.total}</b></td>
-      <td>${d.titulares}</td>
-      <td>${d.dependentes}</td>
-      <td><button class="btn-detail" data-date="${d.dia}">Ver detalhes</button></td>
-    `;
-    tbody.appendChild(tr);
-  });
-
-  tbody.querySelectorAll('.btn-detail').forEach(btn => {
-    btn.addEventListener('click', () => showDetails(btn.dataset.date));
-  });
-}
-
-async function showDetails(date) {
-  $('modalTitle').textContent = `Ativações em ${formatDay(date)}`;
-  $('modalBody').innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted)">Carregando...</td></tr>';
-  $('modal').classList.remove('hidden');
-
-  try {
-    const res = await fetch(`/payroll-ops/api/activations/details?date=${date}`);
-    if (!res.ok) throw new Error('Erro');
-    const rows = await res.json();
-
-    const tbody = $('modalBody');
-    tbody.innerHTML = '';
-
-    if (rows.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted)">Nenhum registro</td></tr>';
-      return;
-    }
-
-    rows.forEach(r => tbody.appendChild(renderDetailRow(r)));
-  } catch (err) {
-    $('modalBody').innerHTML = '<tr><td colspan="7" style="color:#ef4444">Erro ao carregar detalhes</td></tr>';
-  }
-}
-
-function closeModal() {
-  $('modal').classList.add('hidden');
-}
-
-init();
+// Init
+selectedDate = todayKey();
+loadDay();
 initRefreshBar('refreshContainer', loadAll);
