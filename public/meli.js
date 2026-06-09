@@ -223,42 +223,76 @@ function renderSummary(s) {
   const chipEsim = Number(s.ativosChipEsim) || 0;
   const pendFisico = Number(s.pendenteFisico) || 0;
   const pendEsim = Number(s.pendenteEsim) || 0;
+  const semChip = ativos - comChip;
+  const semApn = comChip - apn;
   const naoElegApn = Number(s.naoElegiveisApn) || 0;
+  const fmt = v => v.toLocaleString('pt-BR');
 
-  // Stage 1: Cadastrados
-  $('fCadastrados').textContent = totalCad.toLocaleString('pt-BR');
-  $('fTitCad').textContent = titCad.toLocaleString('pt-BR');
-  $('fTitCadPct').textContent = '(' + pct(titCad, totalCad) + '%)';
-  $('fDepCad').textContent = depCad.toLocaleString('pt-BR');
-  $('fDepCadPct').textContent = '(' + pct(depCad, totalCad) + '%)';
+  // Barras - valores
+  $('fCadastrados').textContent = fmt(totalCad);
+  $('fAtivos').textContent = fmt(ativos);
+  $('fComChip').textContent = fmt(comChip);
+  $('fApn').textContent = fmt(apn);
+
+  // Barras - larguras proporcionais (min 25% para legibilidade)
+  const barPct = (v) => Math.max((v / totalCad) * 100, 25);
   $('fBar1').style.width = '100%';
+  $('fBar2').style.width = barPct(ativos) + '%';
+  $('fBar3').style.width = barPct(comChip) + '%';
+  $('fBar4').style.width = barPct(apn) + '%';
 
-  // Stage 2: Elegíveis
-  $('fAtivos').textContent = ativos.toLocaleString('pt-BR');
-  $('fNaoElegiveis').textContent = naoEleg.toLocaleString('pt-BR');
-  $('fNaoElegPct').textContent = '(' + pct(naoEleg, totalCad) + '%)';
-  $('fBar2').style.width = pct(ativos, totalCad) + '%';
-  $('fConv1').textContent = pct(ativos, totalCad) + '% conversão';
+  // Deltas do dia
+  const setDelta = (id, v) => {
+    const el = $(id);
+    if (v > 0) el.textContent = '+' + fmt(v) + ' hoje';
+    else if (v === 0) el.textContent = '';
+    else el.textContent = fmt(v) + ' hoje';
+  };
+  const cadHoje = Number(s.cadastradosHoje) || 0;
+  const chipHoje = Number(s.chipsHoje) || 0;
+  const apnHoje = Number(s.apnHoje) || 0;
+  setDelta('fDeltaCad', cadHoje);
+  setDelta('fDeltaEleg', cadHoje);
+  setDelta('fDeltaChip', chipHoje);
+  setDelta('fDeltaApn', apnHoje);
 
-  // Stage 3: Com Chip
-  $('fComChip').textContent = comChip.toLocaleString('pt-BR');
-  $('fChipFisico').textContent = chipFisico.toLocaleString('pt-BR');
+  // Tags - subdivisões de cada estágio
+  $('fTitCad').textContent = fmt(titCad);
+  $('fTitCadPct').textContent = '(' + pct(titCad, totalCad) + '%)';
+  $('fDepCad').textContent = fmt(depCad);
+  $('fDepCadPct').textContent = '(' + pct(depCad, totalCad) + '%)';
+
+  // Níveis dos elegíveis
+  const nivPrata = Number(s.niveisPrata) || 0;
+  const nivOuro = Number(s.niveisOuro) || 0;
+  const nivPlatina = Number(s.niveisPlatina) || 0;
+  $('fNivPrata').textContent = fmt(nivPrata);
+  $('fNivPrataPct').textContent = '(' + pct(nivPrata, ativos) + '%)';
+  $('fNivOuro').textContent = fmt(nivOuro);
+  $('fNivOuroPct').textContent = '(' + pct(nivOuro, ativos) + '%)';
+  $('fNivPlatina').textContent = fmt(nivPlatina);
+  $('fNivPlatinaPct').textContent = '(' + pct(nivPlatina, ativos) + '%)';
+
+  $('fChipFisico').textContent = fmt(chipFisico);
   $('fChipFisicoPct').textContent = '(' + pct(chipFisico, comChip) + '%)';
-  $('fChipEsim').textContent = chipEsim.toLocaleString('pt-BR');
+  $('fChipEsim').textContent = fmt(chipEsim);
   $('fChipEsimPct').textContent = '(' + pct(chipEsim, comChip) + '%)';
-  $('fPendFisico').textContent = pendFisico.toLocaleString('pt-BR');
-  $('fPendFisicoPct').textContent = '(' + pct(pendFisico, totalCad) + '%)';
-  $('fPendEsim').textContent = pendEsim.toLocaleString('pt-BR');
-  $('fPendEsimPct').textContent = '(' + pct(pendEsim, totalCad) + '%)';
-  $('fBar3').style.width = pct(comChip, totalCad) + '%';
-  $('fConv2').textContent = pct(comChip, ativos) + '% dos elegíveis';
 
-  // Stage 4: APN
-  $('fApn').textContent = apn.toLocaleString('pt-BR');
-  $('fApnNaoEleg').textContent = naoElegApn.toLocaleString('pt-BR');
-  $('fApnNaoElegPct').textContent = '(' + pct(naoElegApn, totalCad) + '%)';
-  $('fBar4').style.width = pct(apn, totalCad) + '%';
-  $('fConv3').textContent = pct(apn, comChip) + '% dos com chip';
+  const apnFisico = Number(s.apnFisico) || 0;
+  const apnEsim = Number(s.apnEsim) || 0;
+  $('fApnFisico').textContent = fmt(apnFisico);
+  $('fApnFisicoPct').textContent = '(' + pct(apnFisico, apn) + '%)';
+  $('fApnEsim').textContent = fmt(apnEsim);
+  $('fApnEsimPct').textContent = '(' + pct(apnEsim, apn) + '%)';
+
+  // Drops - explicam a diferença exata entre estágios
+  // Drop 1 preenchido pelo renderEvolution
+
+  $('fDrop2').innerHTML = `<span class="funnel-drop-tag"><b>-${fmt(semChip)}</b> ${semChip === 1 ? 'não retirou o chip' : 'não retiraram o chip'} (${pct(semChip, ativos)}%)</span>`
+    + (pendFisico > 0 ? ` <span class="funnel-drop-tag">${fmt(pendFisico)} pend. físico (${pct(pendFisico, semChip)}%)</span>` : '')
+    + (pendEsim > 0 ? ` <span class="funnel-drop-tag">${fmt(pendEsim)} pend. eSIM (${pct(pendEsim, semChip)}%)</span>` : '');
+
+  $('fDrop3').innerHTML = `<span class="funnel-drop-tag"><b>-${fmt(semApn)}</b> sem conexão APN (${pct(semApn, comChip)}%)</span>`;
 
   // Receita
   $('receitaTotal').textContent = formatCurrency(s.receitaTotal);
@@ -278,17 +312,16 @@ function renderEvolution(ev) {
 
   const prevLabel = formatRefDateLabel(ev.prevRefDate);
   const currLabel = formatRefDateLabel(ev.refDate);
-  const totalCad = Number(ev.totalUsuarios) || 0;
-  const entraram = Number(ev.entraramNaBase) || 0;
   const sairam = Number(ev.sairamDaBase) || 0;
+  const nunca = (Number(ev.nuncaNaBase) || 0) + (Number(ev.semIdentifier) || 0);
+  const totalCad = Number(ev.totalUsuarios) || 0;
 
-  $('fEntraram').textContent = entraram.toLocaleString('pt-BR');
-  $('fEntraramPct').textContent = totalCad > 0 ? '(' + ((entraram / totalCad) * 100).toFixed(1) + '%)' : '';
-  $('fEntraramSub').textContent = `no ciclo ${currLabel}`;
+  $('fCicloAtual').textContent = currLabel;
 
-  $('fSairam').textContent = sairam.toLocaleString('pt-BR');
-  $('fSairamPct').textContent = totalCad > 0 ? '(' + ((sairam / totalCad) * 100).toFixed(1) + '%)' : '';
-  $('fSairamSub').textContent = `${prevLabel} → ${currLabel}`;
+  const pctVal = (v, base) => base > 0 ? ((v / base) * 100).toFixed(1) : '0.0';
+  $('fDrop1').innerHTML =
+    `<span class="funnel-drop-tag">Saíram: <b>${sairam.toLocaleString('pt-BR')}</b> (${pctVal(sairam, totalCad)}%) ${prevLabel} → ${currLabel}</span>`
+    + (nunca > 0 ? ` <span class="funnel-drop-tag">Nunca foram elegíveis: <b>${nunca.toLocaleString('pt-BR')}</b> (${pctVal(nunca, totalCad)}%)</span>` : '');
 }
 
 const PIE_COLORS = ['#3b82f6', '#a855f7', '#22c55e', '#f59e0b', '#ef4444', '#06b6d4', '#ec4899', '#84cc16'];

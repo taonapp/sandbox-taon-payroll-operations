@@ -1249,7 +1249,7 @@ apiRouter.get('/api/meli/summary', async (req, res) => {
         WHERE u.internalUser = 0
       ),
       ativos_meli AS (
-        SELECT ud.idUser, ud.tipo
+        SELECT ud.idUser, ud.tipo, mel.currentLevelName AS nivel
         FROM user_data ud
         INNER JOIN UsersMetadata um ON um.idUser = ud.idUser AND um.name = 'identifier'
         INNER JOIN Meli mel ON mel.identifier = um.value AND mel.refDate = ?
@@ -1302,6 +1302,11 @@ apiRouter.get('/api/meli/summary', async (req, res) => {
         (SELECT SUM(CASE WHEN tipo = 'Titular' THEN 1 ELSE 0 END) FROM ativos_meli) AS titularesAtivos,
         (SELECT SUM(CASE WHEN tipo = 'Dependente' THEN 1 ELSE 0 END) FROM ativos_meli) AS dependentesAtivos,
 
+        -- Níveis dos elegíveis
+        (SELECT COUNT(*) FROM ativos_meli WHERE nivel = 'Silver') AS niveisPrata,
+        (SELECT COUNT(*) FROM ativos_meli WHERE nivel = 'Gold') AS niveisOuro,
+        (SELECT COUNT(*) FROM ativos_meli WHERE nivel = 'Platinum') AS niveisPlatina,
+
         -- Funil 3: Com chip (1 user = 1 chip mais recente)
         (SELECT COUNT(*) FROM user_chip_latest) AS ativosComChip,
         (SELECT COUNT(*) FROM user_chip_latest WHERE tipoChip = 'fisico') AS ativosChipFisico,
@@ -1312,8 +1317,15 @@ apiRouter.get('/api/meli/summary', async (req, res) => {
 
         -- Funil 4: Bateram na APN (1 user = 1 contagem)
         (SELECT COUNT(*) FROM user_chip_latest uc WHERE EXISTS (SELECT 1 FROM IPsUsers ip WHERE ip.imsi = uc.imsi) OR EXISTS (SELECT 1 FROM IPsIMSIsTemp ipt WHERE ipt.imsi = uc.imsi)) AS ativosApn,
-        -- Não elegíveis com chip que bateram na APN (1 user = 1 contagem)
-        (SELECT COUNT(*) FROM nao_eleg_chip_latest nc WHERE EXISTS (SELECT 1 FROM IPsUsers ip WHERE ip.imsi = nc.imsi) OR EXISTS (SELECT 1 FROM IPsIMSIsTemp ipt WHERE ipt.imsi = nc.imsi)) AS naoElegiveisApn,
+        (SELECT COUNT(*) FROM user_chip_latest uc WHERE uc.tipoChip = 'fisico' AND (EXISTS (SELECT 1 FROM IPsUsers ip WHERE ip.imsi = uc.imsi) OR EXISTS (SELECT 1 FROM IPsIMSIsTemp ipt WHERE ipt.imsi = uc.imsi))) AS apnFisico,
+        (SELECT COUNT(*) FROM user_chip_latest uc WHERE uc.tipoChip = 'e-sim' AND (EXISTS (SELECT 1 FROM IPsUsers ip WHERE ip.imsi = uc.imsi) OR EXISTS (SELECT 1 FROM IPsIMSIsTemp ipt WHERE ipt.imsi = uc.imsi))) AS apnEsim,
+
+        -- Variação do dia (cadastros hoje, horário Brasília)
+        (SELECT COUNT(*) FROM user_data WHERE DATE(DATE_SUB(cdate, INTERVAL 3 HOUR)) = CURDATE()) AS cadastradosHoje,
+        -- Chips associados hoje (todos MELI26, alinhado com timeline)
+        (SELECT COUNT(*) FROM user_data ud2 INNER JOIN SimCards sc ON sc.idUser = ud2.idUser WHERE DATE(DATE_SUB((SELECT MIN(h.vdate) FROM SimCards FOR SYSTEM_TIME ALL h WHERE h.id = sc.id AND h.idUser IS NOT NULL), INTERVAL 3 HOUR)) = CURDATE()) AS chipsHoje,
+        -- APN hoje (todos MELI26)
+        (SELECT COUNT(DISTINCT ud2.idUser) FROM user_data ud2 INNER JOIN SimCards sc ON sc.idUser = ud2.idUser WHERE EXISTS (SELECT 1 FROM IPsUsers ip WHERE ip.imsi = sc.imsi AND DATE(DATE_SUB(ip.cdate, INTERVAL 3 HOUR)) = CURDATE()) OR EXISTS (SELECT 1 FROM IPsIMSIsTemp ipt WHERE ipt.imsi = sc.imsi AND DATE(DATE_SUB(ipt.cdate, INTERVAL 3 HOUR)) = CURDATE())) AS apnHoje,
 
         -- Receita
         COALESCE(SUM(amount), 0) AS receitaTotal,
@@ -1521,15 +1533,15 @@ apiRouter.get('/api/meli/timeline', async (req, res) => {
         ) x WHERE rn = 1
       )
       SELECT
-        DATE_FORMAT(u.cdate, '%Y-%m-%d') AS dia,
+        DATE_FORMAT(DATE_SUB(u.cdate, INTERVAL 3 HOUR), '%Y-%m-%d') AS dia,
         COALESCE(lr.productName, 'Sem plano') AS plano,
         COUNT(*) AS total
       FROM meli_users mu
       INNER JOIN Users u ON u.id = mu.idUser
       LEFT JOIN latest_rpc lr ON lr.idUser = u.id
       WHERE u.internalUser = 0
-        ${req.query.month ? "AND DATE_FORMAT(u.cdate, '%Y-%m') = ?" : ''}
-      GROUP BY DATE_FORMAT(u.cdate, '%Y-%m-%d'), COALESCE(lr.productName, 'Sem plano')
+        ${req.query.month ? "AND DATE_FORMAT(DATE_SUB(u.cdate, INTERVAL 3 HOUR), '%Y-%m') = ?" : ''}
+      GROUP BY DATE_FORMAT(DATE_SUB(u.cdate, INTERVAL 3 HOUR), '%Y-%m-%d'), COALESCE(lr.productName, 'Sem plano')
       ORDER BY dia ASC, plano ASC
     `, req.query.month ? [req.query.month] : []);
 

@@ -79,98 +79,73 @@
 
       <!-- TAB ATIVACAO -->
       <div id="tabAtivacao" class="tab-content">
-      <!-- Funil de Ativações -->
-      <section class="funnel-section">
-        <!-- Estágio 1: Cadastrados -->
-        <div class="funnel-card" style="border-left-color: var(--blue)">
-          <div class="funnel-header">
-            <span class="funnel-label">Cadastrados</span>
-            <span class="funnel-value" style="color: var(--blue)" id="fCadastrados">-</span>
-          </div>
-          <div class="funnel-bar-track">
-            <div class="funnel-bar-fill" id="fBar1" style="background: var(--blue)"></div>
+      <!-- Funil + Painel lateral -->
+      <section class="funnel-row">
+        <!-- Funil de Ativações -->
+        <div class="funnel-section">
+          <span class="card-label">Funil de ativação</span>
+          <!-- Barra 1: Cadastrados -->
+          <div class="funnel-bar" id="fBar1" style="background:var(--blue)">
+            <span class="funnel-bar-label">Cadastrados</span>
+            <span class="funnel-bar-num"><span class="funnel-bar-value" id="fCadastrados">-</span><span class="funnel-bar-delta" id="fDeltaCad"></span></span>
           </div>
           <div class="funnel-tags">
             <span class="funnel-tag">Titulares: <b id="fTitCad">-</b> <small id="fTitCadPct"></small></span>
             <span class="funnel-tag">Dependentes: <b id="fDepCad">-</b> <small id="fDepCadPct"></small></span>
           </div>
-        </div>
 
-        <div class="funnel-connector">
-          <span class="funnel-arrow">&#8595;</span>
-          <span class="funnel-conv" id="fConv1">-</span>
-        </div>
+          <!-- Drop 1→2 -->
+          <div class="funnel-drop" id="fDrop1"></div>
 
-        <!-- Estágio 2: Elegíveis -->
-        <div class="funnel-card" style="border-left-color: #22c55e">
-          <div class="funnel-header">
-            <span class="funnel-label">Elegíveis no ciclo</span>
-            <span class="funnel-value" style="color: #22c55e" id="fAtivos">-</span>
-          </div>
-          <div class="funnel-bar-track">
-            <div class="funnel-bar-fill" id="fBar2" style="background: #22c55e"></div>
+          <!-- Barra 2: Elegíveis -->
+          <div class="funnel-bar" id="fBar2" style="background:#22c55e">
+            <span class="funnel-bar-label">Elegíveis no ciclo <span class="funnel-bar-cycle" id="fCicloAtual"></span></span>
+            <span class="funnel-bar-num"><span class="funnel-bar-value" id="fAtivos">-</span><span class="funnel-bar-delta" id="fDeltaEleg"></span></span>
           </div>
           <div class="funnel-tags">
-            <span class="funnel-tag funnel-tag-red">Não elegíveis: <b id="fNaoElegiveis">-</b> <small id="fNaoElegPct"></small></span>
-            <span class="funnel-tag funnel-tag-blue">Entraram: <b id="fEntraram">-</b> <small id="fEntraramPct"></small> <small id="fEntraramSub"></small></span>
-            <span class="funnel-tag funnel-tag-red">Saíram: <b id="fSairam">-</b> <small id="fSairamPct"></small> <small id="fSairamSub"></small></span>
+            <span class="funnel-tag">Prata: <b id="fNivPrata">-</b> <small id="fNivPrataPct"></small></span>
+            <span class="funnel-tag">Ouro: <b id="fNivOuro">-</b> <small id="fNivOuroPct"></small></span>
+            <span class="funnel-tag">Platina: <b id="fNivPlatina">-</b> <small id="fNivPlatinaPct"></small></span>
           </div>
-        </div>
 
-        <div class="funnel-connector">
-          <span class="funnel-arrow">&#8595;</span>
-          <span class="funnel-conv" id="fConv2">-</span>
-        </div>
+          <!-- Drop 2→3 -->
+          <div class="funnel-drop" id="fDrop2"></div>
 
-        <!-- Estágio 3: Com Chip -->
-        <div class="funnel-card" style="border-left-color: #f59e0b">
-          <div class="funnel-header">
-            <span class="funnel-label">Com chip ativo</span>
-            <div style="display:flex;align-items:center;gap:12px">
-              <span class="funnel-value" style="color: #f59e0b" id="fComChip">-</span>
-              <button class="export-btn" id="exportElegiveisChip">Exportar IDs</button>
-            </div>
-          </div>
-          <div class="funnel-bar-track">
-            <div class="funnel-bar-fill" id="fBar3" style="background: #f59e0b"></div>
+          <!-- Barra 3: Com chip -->
+          <div class="funnel-bar" id="fBar3" style="background:#f59e0b">
+            <span class="funnel-bar-label">Com chip ativo</span>
+            <span class="funnel-bar-num"><span class="funnel-bar-value" id="fComChip">-</span><span class="funnel-bar-delta" id="fDeltaChip"></span></span>
           </div>
           <div class="funnel-tags">
             <span class="funnel-tag">Físico: <b id="fChipFisico">-</b> <small id="fChipFisicoPct"></small></span>
             <span class="funnel-tag">eSIM: <b id="fChipEsim">-</b> <small id="fChipEsimPct"></small></span>
-            <span class="funnel-tag funnel-tag-orange">Pend. físico: <b id="fPendFisico">-</b> <small id="fPendFisicoPct"></small></span>
-            <span class="funnel-tag funnel-tag-orange">Pend. eSIM: <b id="fPendEsim">-</b> <small id="fPendEsimPct"></small></span>
+            <button class="export-btn" id="exportElegiveisChip">Exportar IDs</button>
           </div>
-        </div>
 
-        <div class="funnel-connector">
-          <span class="funnel-arrow">&#8595;</span>
-          <span class="funnel-conv" id="fConv3">-</span>
-        </div>
+          <!-- Drop 3→4 -->
+          <div class="funnel-drop" id="fDrop3"></div>
 
-        <!-- Estágio 4: Bateram na APN -->
-        <div class="funnel-card" style="border-left-color: #a855f7">
-          <div class="funnel-header">
-            <span class="funnel-label">Bateram na APN</span>
-            <span class="funnel-value" style="color: #a855f7" id="fApn">-</span>
-          </div>
-          <div class="funnel-bar-track">
-            <div class="funnel-bar-fill" id="fBar4" style="background: #a855f7"></div>
+          <!-- Barra 4: APN -->
+          <div class="funnel-bar" id="fBar4" style="background:#a855f7">
+            <span class="funnel-bar-label">Bateram na APN</span>
+            <span class="funnel-bar-num"><span class="funnel-bar-value" id="fApn">-</span><span class="funnel-bar-delta" id="fDeltaApn"></span></span>
           </div>
           <div class="funnel-tags">
-            <span class="funnel-tag funnel-tag-muted">Não elegíveis na APN: <b id="fApnNaoEleg">-</b> <small id="fApnNaoElegPct"></small></span>
+            <span class="funnel-tag">Físico: <b id="fApnFisico">-</b> <small id="fApnFisicoPct"></small></span>
+            <span class="funnel-tag">eSIM: <b id="fApnEsim">-</b> <small id="fApnEsimPct"></small></span>
           </div>
         </div>
-      </section>
 
-      <!-- Receita -->
-      <section class="cards-row">
-        <div class="card accent-green">
-          <span class="card-label">Receita</span>
-          <span class="card-value" id="receitaTotal">-</span>
-        </div>
-        <div class="card accent-orange">
-          <span class="card-label">Ticket Medio</span>
-          <span class="card-value" id="ticketMedio">-</span>
+        <!-- Painel lateral -->
+        <div class="funnel-side">
+          <div class="funnel-side-card accent-green">
+            <span class="card-label">Receita</span>
+            <span class="card-value" id="receitaTotal">-</span>
+          </div>
+          <div class="funnel-side-card accent-orange">
+            <span class="card-label">Ticket médio</span>
+            <span class="card-value" id="ticketMedio">-</span>
+          </div>
         </div>
       </section>
 

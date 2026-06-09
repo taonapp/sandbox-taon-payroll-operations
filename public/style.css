@@ -218,11 +218,21 @@ a.card-link:hover {
 }
 
 .card-label {
+  display: block;
   font-size: 13px;
   font-weight: 500;
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
+}
+
+.card .card-label {
+  margin-bottom: 4px;
+}
+
+.funnel-section > .card-label,
+.funnel-side-card > .card-label {
+  margin-bottom: 16px;
 }
 
 .card-value {
