@@ -1225,6 +1225,9 @@ apiRouter.get('/api/partnerships', async (req, res) => {
 // Ativação Meli — métricas de usuários com código MELI26
 apiRouter.get('/api/meli/summary', async (req, res) => {
   try {
+    const now = new Date();
+    const currentRefDate = now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0');
+
     const [rows] = await pool.query(`
       WITH meli_users AS (
         SELECT DISTINCT mc.idUser
@@ -1245,6 +1248,33 @@ apiRouter.get('/api/meli/summary', async (req, res) => {
         INNER JOIN Users u ON u.id = mu.idUser
         WHERE u.internalUser = 0
       ),
+      ativos_meli AS (
+        SELECT ud.idUser, ud.tipo
+        FROM user_data ud
+        INNER JOIN UsersMetadata um ON um.idUser = ud.idUser AND um.name = 'identifier'
+        INNER JOIN Meli mel ON mel.identifier = um.value AND mel.refDate = ?
+      ),
+      -- Um chip por user (o mais recente)
+      user_chip AS (
+        SELECT am.idUser, sc.type AS tipoChip, sc.imsi,
+          ROW_NUMBER() OVER (PARTITION BY am.idUser ORDER BY sc.id DESC) AS rn
+        FROM ativos_meli am
+        INNER JOIN SimCards sc ON sc.idUser = am.idUser
+      ),
+      user_chip_latest AS (
+        SELECT idUser, tipoChip, imsi FROM user_chip WHERE rn = 1
+      ),
+      -- Não elegíveis com chip (um chip por user)
+      nao_eleg_chip AS (
+        SELECT ud.idUser, sc.imsi,
+          ROW_NUMBER() OVER (PARTITION BY ud.idUser ORDER BY sc.id DESC) AS rn
+        FROM user_data ud
+        INNER JOIN SimCards sc ON sc.idUser = ud.idUser
+        WHERE NOT EXISTS (SELECT 1 FROM ativos_meli am WHERE am.idUser = ud.idUser)
+      ),
+      nao_eleg_chip_latest AS (
+        SELECT idUser, imsi FROM nao_eleg_chip WHERE rn = 1
+      ),
       with_subscription AS (
         SELECT
           ud.*,
@@ -1262,24 +1292,35 @@ apiRouter.get('/api/meli/summary', async (req, res) => {
         WHERE rpc.idStatus = 1
       )
       SELECT
+        -- Funil 1: Cadastrados
         (SELECT COUNT(*) FROM user_data) AS totalCadastrados,
         (SELECT SUM(CASE WHEN idUserParent IS NULL THEN 1 ELSE 0 END) FROM user_data) AS titularesCadastrados,
         (SELECT SUM(CASE WHEN idUserParent IS NOT NULL THEN 1 ELSE 0 END) FROM user_data) AS dependentesCadastrados,
-        (SELECT COUNT(*) FROM user_data WHERE status = 'enabled') AS totalAtivos,
-        (SELECT SUM(CASE WHEN status = 'enabled' AND idUserParent IS NULL THEN 1 ELSE 0 END) FROM user_data) AS titularesAtivos,
-        (SELECT SUM(CASE WHEN status = 'enabled' AND idUserParent IS NOT NULL THEN 1 ELSE 0 END) FROM user_data) AS dependentesAtivos,
-        COUNT(*) AS totalComAssinatura,
-        SUM(CASE WHEN tipo = 'Titular' THEN 1 ELSE 0 END) AS titularesAssinatura,
-        SUM(CASE WHEN tipo = 'Dependente' THEN 1 ELSE 0 END) AS dependentesAssinatura,
+
+        -- Funil 2: Ativos (elegíveis no ciclo atual)
+        (SELECT COUNT(*) FROM ativos_meli) AS ativosAtualmente,
+        (SELECT SUM(CASE WHEN tipo = 'Titular' THEN 1 ELSE 0 END) FROM ativos_meli) AS titularesAtivos,
+        (SELECT SUM(CASE WHEN tipo = 'Dependente' THEN 1 ELSE 0 END) FROM ativos_meli) AS dependentesAtivos,
+
+        -- Funil 3: Com chip (1 user = 1 chip mais recente)
+        (SELECT COUNT(*) FROM user_chip_latest) AS ativosComChip,
+        (SELECT COUNT(*) FROM user_chip_latest WHERE tipoChip = 'fisico') AS ativosChipFisico,
+        (SELECT COUNT(*) FROM user_chip_latest WHERE tipoChip = 'e-sim') AS ativosChipEsim,
+        -- Pendentes: elegíveis que escolheram chip mas não têm nenhum SimCard
+        (SELECT COUNT(DISTINCT am.idUser) FROM ativos_meli am INNER JOIN UsersMetadata umC ON umC.idUser = am.idUser AND umC.name = 'getTypeChip' AND umC.value = 'physical' WHERE NOT EXISTS (SELECT 1 FROM SimCards sc WHERE sc.idUser = am.idUser)) AS pendenteFisico,
+        (SELECT COUNT(DISTINCT am.idUser) FROM ativos_meli am INNER JOIN UsersMetadata umC ON umC.idUser = am.idUser AND umC.name = 'getTypeChip' AND umC.value = 'esim' WHERE NOT EXISTS (SELECT 1 FROM SimCards sc WHERE sc.idUser = am.idUser)) AS pendenteEsim,
+
+        -- Funil 4: Bateram na APN (1 user = 1 contagem)
+        (SELECT COUNT(*) FROM user_chip_latest uc WHERE EXISTS (SELECT 1 FROM IPsUsers ip WHERE ip.imsi = uc.imsi) OR EXISTS (SELECT 1 FROM IPsIMSIsTemp ipt WHERE ipt.imsi = uc.imsi)) AS ativosApn,
+        -- Não elegíveis com chip que bateram na APN (1 user = 1 contagem)
+        (SELECT COUNT(*) FROM nao_eleg_chip_latest nc WHERE EXISTS (SELECT 1 FROM IPsUsers ip WHERE ip.imsi = nc.imsi) OR EXISTS (SELECT 1 FROM IPsIMSIsTemp ipt WHERE ipt.imsi = nc.imsi)) AS naoElegiveisApn,
+
+        -- Receita
         COALESCE(SUM(amount), 0) AS receitaTotal,
-        ROUND(COALESCE(AVG(amount), 0), 2) AS ticketMedio,
-        (SELECT COUNT(*) FROM SimCards sc INNER JOIN user_data ud2 ON ud2.idUser = sc.idUser) AS totalChips,
-        (SELECT COUNT(*) FROM SimCards sc INNER JOIN user_data ud2 ON ud2.idUser = sc.idUser WHERE sc.type = 'fisico') AS chipsFisicos,
-        (SELECT COUNT(*) FROM SimCards sc INNER JOIN user_data ud2 ON ud2.idUser = sc.idUser WHERE sc.type = 'e-sim') AS chipsEsim,
-        (SELECT COUNT(DISTINCT sc2.imsi) FROM SimCards sc2 INNER JOIN user_data ud3 ON ud3.idUser = sc2.idUser WHERE EXISTS (SELECT 1 FROM IPsUsers ip WHERE ip.imsi = sc2.imsi) OR EXISTS (SELECT 1 FROM IPsIMSIsTemp ipt WHERE ipt.imsi = sc2.imsi)) AS chipsApn
+        ROUND(COALESCE(AVG(amount), 0), 2) AS ticketMedio
       FROM with_subscription
       WHERE rn = 1
-    `);
+    `, [currentRefDate]);
 
     res.json(rows[0]);
   } catch (err) {
@@ -1500,6 +1541,35 @@ apiRouter.get('/api/meli/timeline', async (req, res) => {
 });
 
 
+// IDs dos motoristas elegíveis com chip associado
+apiRouter.get('/api/meli/elegiveis-com-chip', async (req, res) => {
+  try {
+    const now = new Date();
+    const currentRefDate = now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0');
+
+    const [rows] = await pool.query(`
+      WITH meli_users AS (
+        SELECT DISTINCT mc.idUser
+        FROM MgmChain mc
+        WHERE mc.mgmInvCode = 'MELI26'
+          AND mc.nivel = 1
+      )
+      SELECT DISTINCT um.value AS identifier
+      FROM meli_users mu
+      INNER JOIN Users u ON u.id = mu.idUser
+      INNER JOIN UsersMetadata um ON um.idUser = u.id AND um.name = 'identifier'
+      INNER JOIN Meli mel ON mel.identifier = um.value AND mel.refDate = ?
+      WHERE u.internalUser = 0
+        AND EXISTS (SELECT 1 FROM SimCards sc WHERE sc.idUser = u.id)
+    `, [currentRefDate]);
+
+    res.json(rows.map(r => r.identifier));
+  } catch (err) {
+    console.error('Meli elegiveis com chip error:', err);
+    res.status(500).json({ error: 'Erro ao consultar elegíveis com chip' });
+  }
+});
+
 // Chips Meli por dia (timeline físico vs eSIM)
 apiRouter.get('/api/meli/chips-timeline', async (req, res) => {
   try {
@@ -1511,14 +1581,17 @@ apiRouter.get('/api/meli/chips-timeline', async (req, res) => {
           AND mc.nivel = 1
       )
       SELECT
-        DATE_FORMAT(u.cdate, '%Y-%m-%d') AS dia,
+        DATE_FORMAT(DATE_SUB(
+          (SELECT MIN(h.vdate) FROM SimCards FOR SYSTEM_TIME ALL h WHERE h.id = sc.id AND h.idUser IS NOT NULL),
+          INTERVAL 3 HOUR
+        ), '%Y-%m-%d') AS dia,
         sc.type AS tipoChip,
         COUNT(*) AS total
       FROM meli_users mu
       INNER JOIN Users u ON u.id = mu.idUser
       INNER JOIN SimCards sc ON sc.idUser = u.id
       WHERE u.internalUser = 0
-        ${req.query.month ? "AND DATE_FORMAT(u.cdate, '%Y-%m') = ?" : ''}
+        ${req.query.month ? "AND DATE_FORMAT(DATE_SUB((SELECT MIN(h.vdate) FROM SimCards FOR SYSTEM_TIME ALL h WHERE h.id = sc.id AND h.idUser IS NOT NULL), INTERVAL 3 HOUR), '%Y-%m') = ?" : ''}
       GROUP BY dia, sc.type
       ORDER BY dia ASC, sc.type ASC
     `, req.query.month ? [req.query.month] : []);
@@ -1958,6 +2031,81 @@ apiRouter.get('/api/meli/pending-chips', async (req, res) => {
   } catch (err) {
     console.error('Meli pending chips error:', err);
     res.status(500).json({ error: 'Erro ao consultar pendentes de chip' });
+  }
+});
+
+// Consulta APN por lista de ICCIDs (POST)
+apiRouter.post('/api/apn-check', express.json({ limit: '1mb' }), async (req, res) => {
+  try {
+    const { iccids } = req.body;
+    if (!iccids || !iccids.length) return res.json({ error: 'iccids required' });
+
+    const placeholders = iccids.map(() => '?').join(',');
+    const [rows] = await pool.query(`
+      SELECT
+        sc.iccid,
+        sc.imsi,
+        sc.idUser,
+        sc.type AS tipoChip,
+        CASE WHEN ipu.imsi IS NOT NULL OR ipt.imsi IS NOT NULL THEN 1 ELSE 0 END AS bateuApn
+      FROM SimCards sc
+      LEFT JOIN (
+        SELECT imsi FROM IPsUsers GROUP BY imsi
+      ) ipu ON ipu.imsi = sc.imsi
+      LEFT JOIN (
+        SELECT imsi FROM IPsIMSIsTemp GROUP BY imsi
+      ) ipt ON ipt.imsi = sc.imsi
+      WHERE sc.iccid IN (${placeholders})
+    `, iccids);
+
+    const total = rows.length;
+    const apn = rows.filter(r => r.bateuApn === 1).length;
+    const naoApn = rows.filter(r => r.bateuApn === 0).length;
+    const naoEncontrados = iccids.filter(ic => !rows.find(r => r.iccid === ic));
+
+    res.json({ total, apn, naoApn, naoEncontrados: naoEncontrados.length, detalhes: { encontrados: rows, iccidsNaoEncontrados: naoEncontrados } });
+  } catch (err) {
+    console.error('APN check error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Consulta DataServicesSessions por lista de ICCIDs (POST)
+apiRouter.post('/api/dss-check', express.json({ limit: '1mb' }), async (req, res) => {
+  try {
+    const { iccids, months } = req.body;
+    if (!iccids || !iccids.length) return res.json({ error: 'iccids required' });
+
+    const placeholders = iccids.map(() => '?').join(',');
+    let since;
+    if (req.body.sinceDate) {
+      since = req.body.sinceDate;
+    } else {
+      const sinceDate = new Date();
+      sinceDate.setMonth(sinceDate.getMonth() - (months || 2));
+      since = sinceDate.toISOString().slice(0, 10);
+    }
+
+    const [rows] = await pool.query(`
+      SELECT
+        sc.iccid,
+        sc.imsi,
+        COUNT(dss.id) AS totalSessoes,
+        MIN(dss.cdate) AS primeiraSessao,
+        MAX(dss.cdate) AS ultimaSessao
+      FROM SimCards sc
+      LEFT JOIN DataServicesSessions dss ON dss.imsi = sc.imsi AND dss.cdate >= ?
+      WHERE sc.iccid IN (${placeholders})
+      GROUP BY sc.iccid, sc.imsi
+    `, [since, ...iccids]);
+
+    const comSessao = rows.filter(r => r.totalSessoes > 0).length;
+    const semSessao = rows.filter(r => r.totalSessoes === 0).length;
+
+    res.json({ since, total: rows.length, comSessao, semSessao, detalhes: rows });
+  } catch (err) {
+    console.error('DSS check error:', err);
+    res.status(500).json({ error: err.message });
   }
 });
 

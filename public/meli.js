@@ -2,7 +2,6 @@ const $ = (id) => document.getElementById(id);
 
 let allUsers = [];
 let currentFilter = 'all';
-let csvFilter = 'all';
 let evoFilter = 'all';
 let searchTerm = '';
 let selectedRefDate = '';
@@ -211,31 +210,59 @@ async function loadAll() {
 
 function renderSummary(s) {
   const totalCad = Number(s.totalCadastrados) || 0;
-  const totalAtivos = Number(s.totalAtivos) || 0;
-  const totalAssinatura = Number(s.totalComAssinatura) || 0;
+  const ativos = Number(s.ativosAtualmente) || 0;
+  const comChip = Number(s.ativosComChip) || 0;
+  const apn = Number(s.ativosApn) || 0;
 
-  $('totalCadastrados').textContent = totalCad.toLocaleString('pt-BR');
-  $('titCad').textContent = (Number(s.titularesCadastrados) || 0).toLocaleString('pt-BR');
-  $('depCad').textContent = (Number(s.dependentesCadastrados) || 0).toLocaleString('pt-BR');
+  const pct = (v, base) => base > 0 ? ((v / base) * 100).toFixed(1) : '0.0';
 
-  $('totalAssinatura').textContent = totalAssinatura.toLocaleString('pt-BR');
-  $('titAssinatura').textContent = (Number(s.titularesAssinatura) || 0).toLocaleString('pt-BR');
-  $('depAssinatura').textContent = (Number(s.dependentesAssinatura) || 0).toLocaleString('pt-BR');
+  const titCad = Number(s.titularesCadastrados) || 0;
+  const depCad = Number(s.dependentesCadastrados) || 0;
+  const naoEleg = totalCad - ativos;
+  const chipFisico = Number(s.ativosChipFisico) || 0;
+  const chipEsim = Number(s.ativosChipEsim) || 0;
+  const pendFisico = Number(s.pendenteFisico) || 0;
+  const pendEsim = Number(s.pendenteEsim) || 0;
+  const naoElegApn = Number(s.naoElegiveisApn) || 0;
 
+  // Stage 1: Cadastrados
+  $('fCadastrados').textContent = totalCad.toLocaleString('pt-BR');
+  $('fTitCad').textContent = titCad.toLocaleString('pt-BR');
+  $('fTitCadPct').textContent = '(' + pct(titCad, totalCad) + '%)';
+  $('fDepCad').textContent = depCad.toLocaleString('pt-BR');
+  $('fDepCadPct').textContent = '(' + pct(depCad, totalCad) + '%)';
+  $('fBar1').style.width = '100%';
+
+  // Stage 2: Elegíveis
+  $('fAtivos').textContent = ativos.toLocaleString('pt-BR');
+  $('fNaoElegiveis').textContent = naoEleg.toLocaleString('pt-BR');
+  $('fNaoElegPct').textContent = '(' + pct(naoEleg, totalCad) + '%)';
+  $('fBar2').style.width = pct(ativos, totalCad) + '%';
+  $('fConv1').textContent = pct(ativos, totalCad) + '% conversão';
+
+  // Stage 3: Com Chip
+  $('fComChip').textContent = comChip.toLocaleString('pt-BR');
+  $('fChipFisico').textContent = chipFisico.toLocaleString('pt-BR');
+  $('fChipFisicoPct').textContent = '(' + pct(chipFisico, comChip) + '%)';
+  $('fChipEsim').textContent = chipEsim.toLocaleString('pt-BR');
+  $('fChipEsimPct').textContent = '(' + pct(chipEsim, comChip) + '%)';
+  $('fPendFisico').textContent = pendFisico.toLocaleString('pt-BR');
+  $('fPendFisicoPct').textContent = '(' + pct(pendFisico, totalCad) + '%)';
+  $('fPendEsim').textContent = pendEsim.toLocaleString('pt-BR');
+  $('fPendEsimPct').textContent = '(' + pct(pendEsim, totalCad) + '%)';
+  $('fBar3').style.width = pct(comChip, totalCad) + '%';
+  $('fConv2').textContent = pct(comChip, ativos) + '% dos elegíveis';
+
+  // Stage 4: APN
+  $('fApn').textContent = apn.toLocaleString('pt-BR');
+  $('fApnNaoEleg').textContent = naoElegApn.toLocaleString('pt-BR');
+  $('fApnNaoElegPct').textContent = '(' + pct(naoElegApn, totalCad) + '%)';
+  $('fBar4').style.width = pct(apn, totalCad) + '%';
+  $('fConv3').textContent = pct(apn, comChip) + '% dos com chip';
+
+  // Receita
   $('receitaTotal').textContent = formatCurrency(s.receitaTotal);
   $('ticketMedio').textContent = formatCurrency(s.ticketMedio);
-
-  $('totalChips').textContent = (Number(s.totalChips) || 0).toLocaleString('pt-BR');
-  const chipsFisicos = Number(s.chipsFisicos) || 0;
-  const chipsEsim = Number(s.chipsEsim) || 0;
-  $('chipsFisicos').textContent = chipsFisicos.toLocaleString('pt-BR');
-  $('chipsEsim').textContent = chipsEsim.toLocaleString('pt-BR');
-  const totalChips = Number(s.totalChips) || 0;
-  $('chipsFisicosPct').textContent = totalChips > 0 ? `(${((chipsFisicos / totalChips) * 100).toFixed(1)}%)` : '';
-  $('chipsEsimPct').textContent = totalChips > 0 ? `(${((chipsEsim / totalChips) * 100).toFixed(1)}%)` : '';
-  const chipsApn = Number(s.chipsApn) || 0;
-  $('chipsApn').textContent = chipsApn.toLocaleString('pt-BR');
-  $('apnPct').textContent = totalChips > 0 ? ((chipsApn / totalChips) * 100).toFixed(1) + '% dos chips' : '';
 }
 
 function formatRefDateLabel(rd) {
@@ -247,26 +274,21 @@ function formatRefDateLabel(rd) {
 }
 
 function renderEvolution(ev) {
-  if (!ev || !ev.refDate) {
-    $('evolutionSection').style.display = 'none';
-    return;
-  }
-  $('evolutionSection').style.display = '';
+  if (!ev || !ev.refDate) return;
 
   const prevLabel = formatRefDateLabel(ev.prevRefDate);
   const currLabel = formatRefDateLabel(ev.refDate);
+  const totalCad = Number(ev.totalUsuarios) || 0;
+  const entraram = Number(ev.entraramNaBase) || 0;
+  const sairam = Number(ev.sairamDaBase) || 0;
 
-  $('evPermaneceram').textContent = (Number(ev.permaneceramNaBase) || 0).toLocaleString('pt-BR');
-  $('evPermaneceramSub').textContent = `Ciclos ${prevLabel} e ${currLabel}`;
+  $('fEntraram').textContent = entraram.toLocaleString('pt-BR');
+  $('fEntraramPct').textContent = totalCad > 0 ? '(' + ((entraram / totalCad) * 100).toFixed(1) + '%)' : '';
+  $('fEntraramSub').textContent = `no ciclo ${currLabel}`;
 
-  $('evEntraram').textContent = (Number(ev.entraramNaBase) || 0).toLocaleString('pt-BR');
-  $('evEntraramSub').textContent = `Novos no ciclo ${currLabel}`;
-
-  $('evSairam').textContent = (Number(ev.sairamDaBase) || 0).toLocaleString('pt-BR');
-  $('evSairamSub').textContent = `Ativos em ${prevLabel}, fora em ${currLabel}`;
-
-  $('evNunca').textContent = (Number(ev.nuncaNaBase) + Number(ev.semIdentifier || 0)).toLocaleString('pt-BR');
-  $('evNuncaSub').textContent = 'Sem registro no ciclo';
+  $('fSairam').textContent = sairam.toLocaleString('pt-BR');
+  $('fSairamPct').textContent = totalCad > 0 ? '(' + ((sairam / totalCad) * 100).toFixed(1) + '%)' : '';
+  $('fSairamSub').textContent = `${prevLabel} → ${currLabel}`;
 }
 
 const PIE_COLORS = ['#3b82f6', '#a855f7', '#22c55e', '#f59e0b', '#ef4444', '#06b6d4', '#ec4899', '#84cc16'];
@@ -607,8 +629,8 @@ function renderTable() {
 
   const filtered = allUsers.filter(u => {
     if (currentFilter !== 'all' && u.tipo !== currentFilter) return false;
-    if (csvFilter !== 'all' && u.naBase !== csvFilter) return false;
-    if (evoFilter === 'ativo') { if (u.naBase !== 'Sim') return false; }
+    if (evoFilter === 'ativo') { if (u.evolucao !== 'permaneceu' && u.evolucao !== 'entrou') return false; }
+    else if (evoFilter === 'fora') { if (u.naBase !== 'Nao') return false; }
     else if (evoFilter !== 'all' && u.evolucao !== evoFilter) return false;
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
@@ -738,15 +760,6 @@ document.querySelectorAll('[data-filter]').forEach(btn => {
   });
 });
 
-document.querySelectorAll('[data-csv]').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('[data-csv]').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    csvFilter = btn.dataset.csv;
-    renderTable();
-  });
-});
-
 document.querySelectorAll('[data-evo]').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('[data-evo]').forEach(b => b.classList.remove('active'));
@@ -759,8 +772,8 @@ document.querySelectorAll('[data-evo]').forEach(btn => {
 $('exportIds').addEventListener('click', () => {
   const filtered = allUsers.filter(u => {
     if (currentFilter !== 'all' && u.tipo !== currentFilter) return false;
-    if (csvFilter !== 'all' && u.naBase !== csvFilter) return false;
-    if (evoFilter === 'ativo') { if (u.naBase !== 'Sim') return false; }
+    if (evoFilter === 'ativo') { if (u.evolucao !== 'permaneceu' && u.evolucao !== 'entrou') return false; }
+    else if (evoFilter === 'fora') { if (u.naBase !== 'Nao') return false; }
     else if (evoFilter !== 'all' && u.evolucao !== evoFilter) return false;
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
@@ -780,8 +793,27 @@ $('exportIds').addEventListener('click', () => {
   URL.revokeObjectURL(url);
 });
 
+$('exportElegiveisChip').addEventListener('click', async () => {
+  try {
+    const res = await fetch('/payroll-ops/api/meli/elegiveis-com-chip');
+    if (!res.ok) throw new Error('API error');
+    const ids = await res.json();
+    if (ids.length === 0) return;
+    const csv = 'DRIVER_ID\n' + ids.join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'meli26_elegiveis_com_chip.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error('Export error:', err);
+  }
+});
+
 // Modal Chips
-$('cardChips').addEventListener('click', async () => {
+if ($('cardChips')) $('cardChips').addEventListener('click', async () => {
   const modal = $('chipsModal');
   const tbody = $('chipsTableBody');
   tbody.innerHTML = '<tr><td colspan="14" style="text-align:center;color:var(--text-muted)">Carregando...</td></tr>';
@@ -836,7 +868,7 @@ $('chipsModal').addEventListener('click', (e) => {
 // Modal APN
 let naoApnData = [];
 
-$('cardApn').addEventListener('click', async () => {
+if ($('cardApn')) $('cardApn').addEventListener('click', async () => {
   const modal = $('apnModal');
   const tbody = $('apnTableBody');
   const tbodyNao = $('naoApnTableBody');

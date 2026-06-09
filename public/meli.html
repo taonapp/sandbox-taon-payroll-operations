@@ -79,27 +79,90 @@
 
       <!-- TAB ATIVACAO -->
       <div id="tabAtivacao" class="tab-content">
-      <!-- Cards -->
-      <section class="cards-row">
-        <div class="card accent-blue">
-          <span class="card-label">Total Cadastrados</span>
-          <span class="card-value" id="totalCadastrados">-</span>
-          <div class="card-breakdown">
-            <span><span class="dot dot-blue"></span> Titulares: <b id="titCad">-</b></span>
-            <span><span class="dot dot-purple"></span> Dependentes: <b id="depCad">-</b></span>
+      <!-- Funil de Ativações -->
+      <section class="funnel-section">
+        <!-- Estágio 1: Cadastrados -->
+        <div class="funnel-card" style="border-left-color: var(--blue)">
+          <div class="funnel-header">
+            <span class="funnel-label">Cadastrados</span>
+            <span class="funnel-value" style="color: var(--blue)" id="fCadastrados">-</span>
+          </div>
+          <div class="funnel-bar-track">
+            <div class="funnel-bar-fill" id="fBar1" style="background: var(--blue)"></div>
+          </div>
+          <div class="funnel-tags">
+            <span class="funnel-tag">Titulares: <b id="fTitCad">-</b> <small id="fTitCadPct"></small></span>
+            <span class="funnel-tag">Dependentes: <b id="fDepCad">-</b> <small id="fDepCadPct"></small></span>
           </div>
         </div>
-        <div class="card accent-orange">
-          <span class="card-label">Com Assinatura Ativa</span>
-          <span class="card-value" id="totalAssinatura">-</span>
-          <div class="card-breakdown">
-            <span><span class="dot dot-blue"></span> Titulares: <b id="titAssinatura">-</b></span>
-            <span><span class="dot dot-purple"></span> Dependentes: <b id="depAssinatura">-</b></span>
+
+        <div class="funnel-connector">
+          <span class="funnel-arrow">&#8595;</span>
+          <span class="funnel-conv" id="fConv1">-</span>
+        </div>
+
+        <!-- Estágio 2: Elegíveis -->
+        <div class="funnel-card" style="border-left-color: #22c55e">
+          <div class="funnel-header">
+            <span class="funnel-label">Elegíveis no ciclo</span>
+            <span class="funnel-value" style="color: #22c55e" id="fAtivos">-</span>
+          </div>
+          <div class="funnel-bar-track">
+            <div class="funnel-bar-fill" id="fBar2" style="background: #22c55e"></div>
+          </div>
+          <div class="funnel-tags">
+            <span class="funnel-tag funnel-tag-red">Não elegíveis: <b id="fNaoElegiveis">-</b> <small id="fNaoElegPct"></small></span>
+            <span class="funnel-tag funnel-tag-blue">Entraram: <b id="fEntraram">-</b> <small id="fEntraramPct"></small> <small id="fEntraramSub"></small></span>
+            <span class="funnel-tag funnel-tag-red">Saíram: <b id="fSairam">-</b> <small id="fSairamPct"></small> <small id="fSairamSub"></small></span>
+          </div>
+        </div>
+
+        <div class="funnel-connector">
+          <span class="funnel-arrow">&#8595;</span>
+          <span class="funnel-conv" id="fConv2">-</span>
+        </div>
+
+        <!-- Estágio 3: Com Chip -->
+        <div class="funnel-card" style="border-left-color: #f59e0b">
+          <div class="funnel-header">
+            <span class="funnel-label">Com chip ativo</span>
+            <div style="display:flex;align-items:center;gap:12px">
+              <span class="funnel-value" style="color: #f59e0b" id="fComChip">-</span>
+              <button class="export-btn" id="exportElegiveisChip">Exportar IDs</button>
+            </div>
+          </div>
+          <div class="funnel-bar-track">
+            <div class="funnel-bar-fill" id="fBar3" style="background: #f59e0b"></div>
+          </div>
+          <div class="funnel-tags">
+            <span class="funnel-tag">Físico: <b id="fChipFisico">-</b> <small id="fChipFisicoPct"></small></span>
+            <span class="funnel-tag">eSIM: <b id="fChipEsim">-</b> <small id="fChipEsimPct"></small></span>
+            <span class="funnel-tag funnel-tag-orange">Pend. físico: <b id="fPendFisico">-</b> <small id="fPendFisicoPct"></small></span>
+            <span class="funnel-tag funnel-tag-orange">Pend. eSIM: <b id="fPendEsim">-</b> <small id="fPendEsimPct"></small></span>
+          </div>
+        </div>
+
+        <div class="funnel-connector">
+          <span class="funnel-arrow">&#8595;</span>
+          <span class="funnel-conv" id="fConv3">-</span>
+        </div>
+
+        <!-- Estágio 4: Bateram na APN -->
+        <div class="funnel-card" style="border-left-color: #a855f7">
+          <div class="funnel-header">
+            <span class="funnel-label">Bateram na APN</span>
+            <span class="funnel-value" style="color: #a855f7" id="fApn">-</span>
+          </div>
+          <div class="funnel-bar-track">
+            <div class="funnel-bar-fill" id="fBar4" style="background: #a855f7"></div>
+          </div>
+          <div class="funnel-tags">
+            <span class="funnel-tag funnel-tag-muted">Não elegíveis na APN: <b id="fApnNaoEleg">-</b> <small id="fApnNaoElegPct"></small></span>
           </div>
         </div>
       </section>
 
-      <!-- Receita e Ticket Medio -->
+      <!-- Receita -->
       <section class="cards-row">
         <div class="card accent-green">
           <span class="card-label">Receita</span>
@@ -108,43 +171,6 @@
         <div class="card accent-orange">
           <span class="card-label">Ticket Medio</span>
           <span class="card-value" id="ticketMedio">-</span>
-        </div>
-        <div class="card accent-blue clickable-card" id="cardChips">
-          <span class="card-label">Chips Associados</span>
-          <span class="card-value" id="totalChips">-</span>
-          <div class="card-breakdown">
-            <span><span class="dot dot-blue"></span> Fisicos: <b id="chipsFisicos">-</b> <small id="chipsFisicosPct"></small></span>
-            <span><span class="dot dot-purple"></span> eSIM: <b id="chipsEsim">-</b> <small id="chipsEsimPct"></small></span>
-          </div>
-        </div>
-        <div class="card accent-purple clickable-card" id="cardApn">
-          <span class="card-label">Bateram na APN</span>
-          <span class="card-value" id="chipsApn">-</span>
-          <span class="card-sub" id="apnPct"></span>
-        </div>
-      </section>
-
-      <!-- Evolução Base Meli -->
-      <section class="cards-row" id="evolutionSection">
-        <div class="card accent-green">
-          <span class="card-label">Ativos no Ciclo Atual</span>
-          <span class="card-value" id="evPermaneceram">-</span>
-          <span class="card-sub" id="evPermaneceramSub"></span>
-        </div>
-        <div class="card accent-blue">
-          <span class="card-label">Entraram no Ciclo</span>
-          <span class="card-value" id="evEntraram">-</span>
-          <span class="card-sub" id="evEntraramSub"></span>
-        </div>
-        <div class="card accent-red">
-          <span class="card-label">Sairam do Ciclo</span>
-          <span class="card-value" id="evSairam">-</span>
-          <span class="card-sub" id="evSairamSub"></span>
-        </div>
-        <div class="card accent-muted">
-          <span class="card-label">Sem Elegibilidade</span>
-          <span class="card-value" id="evNunca">-</span>
-          <span class="card-sub" id="evNuncaSub"></span>
         </div>
       </section>
 
@@ -262,15 +288,11 @@
                 <button class="filter-btn" data-filter="Dependente">Dependentes</button>
               </div>
               <div class="filter-group">
-                <button class="filter-btn active" data-csv="all">Todos</button>
-                <button class="filter-btn" data-csv="Sim">Ativo no Ciclo</button>
-                <button class="filter-btn" data-csv="Nao">Fora do Ciclo</button>
-              </div>
-              <div class="filter-group">
                 <button class="filter-btn active" data-evo="all">Todos</button>
                 <button class="filter-btn" data-evo="ativo">Ativo no Ciclo</button>
                 <button class="filter-btn" data-evo="entrou">Entrou</button>
                 <button class="filter-btn" data-evo="saiu">Saiu</button>
+                <button class="filter-btn" data-evo="fora">Fora do Ciclo</button>
                 <button class="filter-btn" data-evo="nunca">Sem Eleg.</button>
               </div>
               <div class="filter-group">
