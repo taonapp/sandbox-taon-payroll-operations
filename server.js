@@ -1228,7 +1228,7 @@ apiRouter.get('/api/meli/summary', async (req, res) => {
     const now = new Date();
     const currentRefDate = now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0');
 
-    const [rows] = await pool.query(`
+    const meliCTE = `
       WITH meli_users AS (
         SELECT DISTINCT mc.idUser
         FROM MgmChain mc
@@ -1237,12 +1237,7 @@ apiRouter.get('/api/meli/summary', async (req, res) => {
       ),
       user_data AS (
         SELECT
-          u.id AS idUser,
-          u.name,
-          u.cpf,
-          u.cdate,
-          u.status,
-          u.idUserParent,
+          u.id AS idUser, u.cdate, u.idUserParent,
           CASE WHEN u.idUserParent IS NULL THEN 'Titular' ELSE 'Dependente' END AS tipo
         FROM meli_users mu
         INNER JOIN Users u ON u.id = mu.idUser
@@ -1254,7 +1249,6 @@ apiRouter.get('/api/meli/summary', async (req, res) => {
         INNER JOIN UsersMetadata um ON um.idUser = ud.idUser AND um.name = 'identifier'
         INNER JOIN Meli mel ON mel.identifier = um.value AND mel.refDate = ?
       ),
-      -- Um chip por user (o mais recente)
       user_chip AS (
         SELECT am.idUser, sc.type AS tipoChip, sc.imsi,
           ROW_NUMBER() OVER (PARTITION BY am.idUser ORDER BY sc.id DESC) AS rn
@@ -1263,78 +1257,79 @@ apiRouter.get('/api/meli/summary', async (req, res) => {
       ),
       user_chip_latest AS (
         SELECT idUser, tipoChip, imsi FROM user_chip WHERE rn = 1
-      ),
-      -- Não elegíveis com chip (um chip por user)
-      nao_eleg_chip AS (
-        SELECT ud.idUser, sc.imsi,
-          ROW_NUMBER() OVER (PARTITION BY ud.idUser ORDER BY sc.id DESC) AS rn
-        FROM user_data ud
-        INNER JOIN SimCards sc ON sc.idUser = ud.idUser
-        WHERE NOT EXISTS (SELECT 1 FROM ativos_meli am WHERE am.idUser = ud.idUser)
-      ),
-      nao_eleg_chip_latest AS (
-        SELECT idUser, imsi FROM nao_eleg_chip WHERE rn = 1
-      ),
-      with_subscription AS (
-        SELECT
-          ud.*,
-          rpc.amount,
-          rpc.paymentMethod,
-          rpc.idCompany,
-          rpc.idStatus AS rpcStatus,
-          p.name AS productName,
-          c.companyName,
-          ROW_NUMBER() OVER (PARTITION BY ud.idUser ORDER BY rpc.cdate DESC) AS rn
-        FROM user_data ud
-        INNER JOIN RecurringPurchasesConfig rpc ON rpc.idUser = ud.idUser
-        LEFT JOIN Products p ON p.id = rpc.idProduct
-        LEFT JOIN Company c ON c.id = rpc.idCompany
-        WHERE rpc.idStatus = 1
-      )
+      )`;
+
+    // Query 1: Métricas do funil (sem APN)
+    const q1 = pool.query(`${meliCTE}
       SELECT
-        -- Funil 1: Cadastrados
         (SELECT COUNT(*) FROM user_data) AS totalCadastrados,
         (SELECT SUM(CASE WHEN idUserParent IS NULL THEN 1 ELSE 0 END) FROM user_data) AS titularesCadastrados,
         (SELECT SUM(CASE WHEN idUserParent IS NOT NULL THEN 1 ELSE 0 END) FROM user_data) AS dependentesCadastrados,
-
-        -- Funil 2: Ativos (elegíveis no ciclo atual)
         (SELECT COUNT(*) FROM ativos_meli) AS ativosAtualmente,
         (SELECT SUM(CASE WHEN tipo = 'Titular' THEN 1 ELSE 0 END) FROM ativos_meli) AS titularesAtivos,
         (SELECT SUM(CASE WHEN tipo = 'Dependente' THEN 1 ELSE 0 END) FROM ativos_meli) AS dependentesAtivos,
-
-        -- Níveis dos elegíveis
         (SELECT COUNT(*) FROM ativos_meli WHERE nivel = 'Silver') AS niveisPrata,
         (SELECT COUNT(*) FROM ativos_meli WHERE nivel = 'Gold') AS niveisOuro,
         (SELECT COUNT(*) FROM ativos_meli WHERE nivel = 'Platinum') AS niveisPlatina,
-
-        -- Funil 3: Com chip (1 user = 1 chip mais recente)
         (SELECT COUNT(*) FROM user_chip_latest) AS ativosComChip,
         (SELECT COUNT(*) FROM user_chip_latest WHERE tipoChip = 'fisico') AS ativosChipFisico,
         (SELECT COUNT(*) FROM user_chip_latest WHERE tipoChip = 'e-sim') AS ativosChipEsim,
-        -- Pendentes: elegíveis que escolheram chip mas não têm nenhum SimCard
         (SELECT COUNT(DISTINCT am.idUser) FROM ativos_meli am INNER JOIN UsersMetadata umC ON umC.idUser = am.idUser AND umC.name = 'getTypeChip' AND umC.value = 'physical' WHERE NOT EXISTS (SELECT 1 FROM SimCards sc WHERE sc.idUser = am.idUser)) AS pendenteFisico,
         (SELECT COUNT(DISTINCT am.idUser) FROM ativos_meli am INNER JOIN UsersMetadata umC ON umC.idUser = am.idUser AND umC.name = 'getTypeChip' AND umC.value = 'esim' WHERE NOT EXISTS (SELECT 1 FROM SimCards sc WHERE sc.idUser = am.idUser)) AS pendenteEsim,
-
-        -- Funil 4: Bateram na APN (1 user = 1 contagem)
-        (SELECT COUNT(*) FROM user_chip_latest uc WHERE EXISTS (SELECT 1 FROM IPsUsers ip WHERE ip.imsi = uc.imsi) OR EXISTS (SELECT 1 FROM IPsIMSIsTemp ipt WHERE ipt.imsi = uc.imsi)) AS ativosApn,
-        (SELECT COUNT(*) FROM user_chip_latest uc WHERE uc.tipoChip = 'fisico' AND (EXISTS (SELECT 1 FROM IPsUsers ip WHERE ip.imsi = uc.imsi) OR EXISTS (SELECT 1 FROM IPsIMSIsTemp ipt WHERE ipt.imsi = uc.imsi))) AS apnFisico,
-        (SELECT COUNT(*) FROM user_chip_latest uc WHERE uc.tipoChip = 'e-sim' AND (EXISTS (SELECT 1 FROM IPsUsers ip WHERE ip.imsi = uc.imsi) OR EXISTS (SELECT 1 FROM IPsIMSIsTemp ipt WHERE ipt.imsi = uc.imsi))) AS apnEsim,
-
-        -- Variação do dia (cadastros hoje, horário Brasília)
-        (SELECT COUNT(*) FROM user_data WHERE DATE(DATE_SUB(cdate, INTERVAL 3 HOUR)) = CURDATE()) AS cadastradosHoje,
-        -- Chips associados hoje (todos MELI26, alinhado com timeline)
-        (SELECT COUNT(*) FROM user_data ud2 INNER JOIN SimCards sc ON sc.idUser = ud2.idUser WHERE DATE(DATE_SUB((SELECT MIN(h.vdate) FROM SimCards FOR SYSTEM_TIME ALL h WHERE h.id = sc.id AND h.idUser IS NOT NULL), INTERVAL 3 HOUR)) = CURDATE()) AS chipsHoje,
-        -- APN hoje (todos MELI26)
-        (SELECT COUNT(DISTINCT ud2.idUser) FROM user_data ud2 INNER JOIN SimCards sc ON sc.idUser = ud2.idUser WHERE EXISTS (SELECT 1 FROM IPsUsers ip WHERE ip.imsi = sc.imsi AND DATE(DATE_SUB(ip.cdate, INTERVAL 3 HOUR)) = CURDATE()) OR EXISTS (SELECT 1 FROM IPsIMSIsTemp ipt WHERE ipt.imsi = sc.imsi AND DATE(DATE_SUB(ipt.cdate, INTERVAL 3 HOUR)) = CURDATE())) AS apnHoje,
-
-        -- Receita
-        COALESCE(SUM(amount), 0) AS receitaTotal,
-        ROUND(COALESCE(AVG(amount), 0), 2) AS ticketMedio
-      FROM with_subscription
-      WHERE rn = 1
+        (SELECT COUNT(*) FROM user_data WHERE DATE(DATE_SUB(cdate, INTERVAL 3 HOUR)) = CURDATE()) AS cadastradosHoje
     `, [currentRefDate]);
 
-    res.json(rows[0]);
+    // Query 1b: APN (pesada, roda em paralelo)
+    const q1b = pool.query(`${meliCTE}
+      SELECT
+        (SELECT COUNT(*) FROM user_chip_latest uc WHERE EXISTS (SELECT 1 FROM IPsUsers ip WHERE ip.imsi = uc.imsi) OR EXISTS (SELECT 1 FROM IPsIMSIsTemp ipt WHERE ipt.imsi = uc.imsi)) AS ativosApn,
+        (SELECT COUNT(*) FROM user_chip_latest uc WHERE uc.tipoChip = 'fisico' AND (EXISTS (SELECT 1 FROM IPsUsers ip WHERE ip.imsi = uc.imsi) OR EXISTS (SELECT 1 FROM IPsIMSIsTemp ipt WHERE ipt.imsi = uc.imsi))) AS apnFisico,
+        (SELECT COUNT(*) FROM user_chip_latest uc WHERE uc.tipoChip = 'e-sim' AND (EXISTS (SELECT 1 FROM IPsUsers ip WHERE ip.imsi = uc.imsi) OR EXISTS (SELECT 1 FROM IPsIMSIsTemp ipt WHERE ipt.imsi = uc.imsi))) AS apnEsim
+    `, [currentRefDate]);
+
+    // Query 2: Variações diárias pesadas (SYSTEM_TIME + APN hoje)
+    const q2 = pool.query(`
+      WITH meli_users AS (
+        SELECT DISTINCT mc.idUser
+        FROM MgmChain mc
+        WHERE mc.mgmInvCode = 'MELI26'
+          AND mc.nivel = 1
+      ),
+      user_data AS (
+        SELECT u.id AS idUser
+        FROM meli_users mu
+        INNER JOIN Users u ON u.id = mu.idUser
+        WHERE u.internalUser = 0
+      )
+      SELECT
+        (SELECT COUNT(*) FROM user_data ud2 INNER JOIN SimCards sc ON sc.idUser = ud2.idUser WHERE DATE(DATE_SUB((SELECT MIN(h.vdate) FROM SimCards FOR SYSTEM_TIME ALL h WHERE h.id = sc.id AND h.idUser IS NOT NULL), INTERVAL 3 HOUR)) = CURDATE()) AS chipsHoje,
+        (SELECT COUNT(DISTINCT ud2.idUser) FROM user_data ud2 INNER JOIN SimCards sc ON sc.idUser = ud2.idUser WHERE EXISTS (SELECT 1 FROM IPsUsers ip WHERE ip.imsi = sc.imsi AND DATE(DATE_SUB(ip.cdate, INTERVAL 3 HOUR)) = CURDATE()) OR EXISTS (SELECT 1 FROM IPsIMSIsTemp ipt WHERE ipt.imsi = sc.imsi AND DATE(DATE_SUB(ipt.cdate, INTERVAL 3 HOUR)) = CURDATE())) AS apnHoje
+    `);
+
+    // Query 3: Receita
+    const q3 = pool.query(`
+      WITH meli_users AS (
+        SELECT DISTINCT mc.idUser
+        FROM MgmChain mc
+        WHERE mc.mgmInvCode = 'MELI26'
+          AND mc.nivel = 1
+      )
+      SELECT
+        COALESCE(SUM(rpc.amount), 0) AS receitaTotal,
+        ROUND(COALESCE(AVG(rpc.amount), 0), 2) AS ticketMedio
+      FROM meli_users mu
+      INNER JOIN Users u ON u.id = mu.idUser
+      INNER JOIN RecurringPurchasesConfig rpc ON rpc.idUser = u.id
+      LEFT JOIN (
+        SELECT idUser, MAX(id) AS maxId FROM RecurringPurchasesConfig WHERE idStatus = 1 GROUP BY idUser
+      ) latest ON latest.idUser = rpc.idUser AND latest.maxId = rpc.id
+      WHERE u.internalUser = 0 AND latest.maxId IS NOT NULL
+    `);
+
+    const [[rows], [apnRows], [dailyRows], [receitaRows]] = await Promise.all([q1, q1b, q2, q3]);
+    const result = { ...rows[0], ...apnRows[0], ...dailyRows[0], ...receitaRows[0] };
+
+    res.json(result);
   } catch (err) {
     console.error('Meli summary error:', err);
     res.status(500).json({ error: 'Erro ao consultar métricas Meli' });

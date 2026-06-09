@@ -659,7 +659,7 @@
 .funnel-bar-num {
   margin-left: auto;
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 6px;
   white-space: nowrap;
 }

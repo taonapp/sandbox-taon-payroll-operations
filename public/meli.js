@@ -320,7 +320,7 @@ function renderEvolution(ev) {
 
   const pctVal = (v, base) => base > 0 ? ((v / base) * 100).toFixed(1) : '0.0';
   $('fDrop1').innerHTML =
-    `<span class="funnel-drop-tag">Saíram: <b>${sairam.toLocaleString('pt-BR')}</b> (${pctVal(sairam, totalCad)}%) ${prevLabel} → ${currLabel}</span>`
+    `<span class="funnel-drop-tag">Perderam benefício: <b>${sairam.toLocaleString('pt-BR')}</b> (${pctVal(sairam, totalCad)}%) ${prevLabel} → ${currLabel}</span>`
     + (nunca > 0 ? ` <span class="funnel-drop-tag">Nunca foram elegíveis: <b>${nunca.toLocaleString('pt-BR')}</b> (${pctVal(nunca, totalCad)}%)</span>` : '');
 }
 
