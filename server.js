@@ -928,10 +928,24 @@ apiRouter.get('/api/operations/day', async (req, res) => {
         (SELECT c.companyName FROM RecurringPurchasesConfig rpc3
          LEFT JOIN Company c ON c.id = rpc3.idCompany
          WHERE rpc3.idUser = u.id AND rpc3.idStatus = 1
-         ORDER BY rpc3.cdate DESC LIMIT 1) AS empresa
+         ORDER BY rpc3.cdate DESC LIMIT 1) AS empresa,
+        umChip.value AS escolhaChip,
+        sc.imsi AS chipImsi,
+        sc.iccid AS chipIccid,
+        sc.type AS chipTipo,
+        CASE WHEN sc.id IS NOT NULL THEN 1 ELSE 0 END AS temChip,
+        CASE WHEN sc.id IS NOT NULL AND (
+          EXISTS (SELECT 1 FROM IPsUsers ip WHERE ip.imsi = sc.imsi)
+          OR EXISTS (SELECT 1 FROM IPsIMSIsTemp ipt WHERE ipt.imsi = sc.imsi)
+        ) THEN 1 ELSE 0 END AS bateuApn
       FROM op_users ou
       INNER JOIN Users u ON u.id = ou.idUser
       LEFT JOIN MgmChain mc2 ON mc2.idUser = u.id AND mc2.nivel = 1
+      LEFT JOIN UsersMetadata umChip ON umChip.idUser = u.id AND umChip.name = 'getTypeChip'
+      LEFT JOIN (
+        SELECT sc1.* FROM SimCards sc1
+        INNER JOIN (SELECT idUser, MAX(id) AS maxId FROM SimCards GROUP BY idUser) sc2 ON sc1.id = sc2.maxId
+      ) sc ON sc.idUser = u.id
       WHERE u.internalUser = 0
         AND DATE(DATE_SUB(u.cdate, INTERVAL 3 HOUR)) = ?
       ORDER BY u.cdate ASC
@@ -956,6 +970,7 @@ apiRouter.get('/api/operations/day', async (req, res) => {
         u.name AS userName,
         c.companyName,
         COALESCE(s.name, 'Sem spot') AS spotName,
+        DATE_FORMAT(DATE_SUB(u.cdate, INTERVAL 3 HOUR), '%Y-%m-%dT%H:%i:%s') AS dataCadastro,
         DATE_FORMAT(DATE_SUB(
           (SELECT MIN(h.vdate) FROM SimCards FOR SYSTEM_TIME ALL h WHERE h.id = sc.id AND h.idUser IS NOT NULL),
           INTERVAL 3 HOUR
@@ -2038,6 +2053,42 @@ apiRouter.get('/api/meli/pending-chips', async (req, res) => {
   } catch (err) {
     console.error('Meli pending chips error:', err);
     res.status(500).json({ error: 'Erro ao consultar pendentes de chip' });
+  }
+});
+
+// Exportar contato dos pendentes eSIM
+apiRouter.get('/api/meli/pending-esim-contato', async (req, res) => {
+  try {
+    const now = new Date();
+    const currentRefDate = now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0');
+    const [rows] = await pool.query(`
+      WITH meli_users AS (
+        SELECT DISTINCT mc.idUser
+        FROM MgmChain mc
+        WHERE mc.mgmInvCode = 'MELI26'
+          AND mc.nivel = 1
+      )
+      SELECT
+        u.id AS idUser,
+        u.name,
+        u.email,
+        DATE_FORMAT(DATE_SUB(u.cdate, INTERVAL 3 HOUR), '%Y-%m-%dT%H:%i:%s') AS dataCadastro,
+        mel.currentLevelName AS nivel,
+        umPhone.value AS whatsapp
+      FROM meli_users mu
+      INNER JOIN Users u ON u.id = mu.idUser
+      INNER JOIN UsersMetadata umChip ON umChip.idUser = u.id AND umChip.name = 'getTypeChip' AND umChip.value = 'esim'
+      LEFT JOIN UsersMetadata umPhone ON umPhone.idUser = u.id AND umPhone.name = 'phone_number'
+      LEFT JOIN UsersMetadata umId ON umId.idUser = u.id AND umId.name = 'identifier'
+      LEFT JOIN Meli mel ON mel.identifier = umId.value AND mel.refDate = ?
+      WHERE u.internalUser = 0
+        AND NOT EXISTS (SELECT 1 FROM SimCards sc WHERE sc.idUser = u.id)
+      ORDER BY u.cdate DESC
+    `, [currentRefDate]);
+    res.json(rows);
+  } catch (err) {
+    console.error('Meli pending esim contato error:', err);
+    res.status(500).json({ error: 'Erro ao consultar contato pendentes eSIM' });
   }
 });
 

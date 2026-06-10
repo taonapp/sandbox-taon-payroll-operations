@@ -845,6 +845,34 @@ $('exportElegiveisChip').addEventListener('click', async () => {
   }
 });
 
+$('exportEsimContato').addEventListener('click', async () => {
+  try {
+    const res = await fetch('/payroll-ops/api/meli/pending-esim-contato');
+    if (!res.ok) throw new Error('API error');
+    const rows = await res.json();
+    if (rows.length === 0) return;
+    const escape = (v) => {
+      const s = String(v || '');
+      return s.includes(',') || s.includes('"') || s.includes('\n') ? '"' + s.replace(/"/g, '""') + '"' : s;
+    };
+    const nivelMap = { Silver: 'Prata', Gold: 'Ouro', Platinum: 'Platina' };
+    const header = 'Nome,Data Cadastro,Nível,WhatsApp,Email';
+    const lines = rows.map(r =>
+      [escape(r.name), formatDateTimeBR(r.dataCadastro), nivelMap[r.nivel] || r.nivel || '', r.whatsapp || '', r.email || ''].join(',')
+    );
+    const csv = [header, ...lines].join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'meli26_pendentes_esim_contato.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error('Export error:', err);
+  }
+});
+
 // Modal Chips
 if ($('cardChips')) $('cardChips').addEventListener('click', async () => {
   const modal = $('chipsModal');

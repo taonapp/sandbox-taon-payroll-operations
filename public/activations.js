@@ -92,10 +92,18 @@ function renderDay(data) {
   const cadBody = $('dayCadBody');
   cadBody.innerHTML = '';
   if (data.cadastros.length === 0) {
-    cadBody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text-muted)">Nenhum cadastro neste dia</td></tr>';
+    cadBody.innerHTML = '<tr><td colspan="12" style="text-align:center;color:var(--text-muted)">Nenhum cadastro neste dia</td></tr>';
   } else {
     data.cadastros.forEach(r => {
       const tr = document.createElement('tr');
+      const escolhaLabel = r.escolhaChip === 'physical' ? '<span style="color:var(--orange)">Físico</span>'
+        : r.escolhaChip === 'esim' ? '<span style="color:var(--purple)">eSIM</span>' : '-';
+      const chipLabel = r.temChip
+        ? `<span style="color:var(--green)">${r.chipTipo === 'fisico' ? 'Físico' : 'eSIM'}</span> <small style="color:var(--text-muted)">${r.chipImsi || ''}</small>`
+        : '<span style="color:var(--text-muted)">Sem chip</span>';
+      const apnLabel = r.temChip
+        ? (r.bateuApn ? '<span style="color:var(--green)">Sim</span>' : '<span style="color:#ef4444">Não</span>')
+        : '-';
       tr.innerHTML = `
         <td>${r.idUser}</td>
         <td>${r.name || '-'}</td>
@@ -105,6 +113,9 @@ function renderDay(data) {
         <td>${r.plano || '-'}</td>
         <td>${r.valor ? formatCurrency(r.valor) : '-'}</td>
         <td>${r.empresa || '-'}</td>
+        <td>${escolhaLabel}</td>
+        <td>${chipLabel}</td>
+        <td>${apnLabel}</td>
         <td>${formatTime(r.dataCadastro)}</td>
       `;
       cadBody.appendChild(tr);
@@ -115,7 +126,7 @@ function renderDay(data) {
   const chipBody = $('dayChipBody');
   chipBody.innerHTML = '';
   if (data.chips.length === 0) {
-    chipBody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-muted)">Nenhum chip associado neste dia</td></tr>';
+    chipBody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text-muted)">Nenhum chip associado neste dia</td></tr>';
   } else {
     data.chips.forEach(r => {
       const tr = document.createElement('tr');
@@ -129,6 +140,7 @@ function renderDay(data) {
         <td>${tipoLabel}</td>
         <td>${r.companyName || '-'}</td>
         <td>${r.spotName || '-'}</td>
+        <td>${r.dataCadastro ? new Date(r.dataCadastro).toLocaleDateString('pt-BR') + ' ' + formatTime(r.dataCadastro) : '-'}</td>
         <td>${formatTime(r.dataAssociacao)}</td>
       `;
       chipBody.appendChild(tr);
