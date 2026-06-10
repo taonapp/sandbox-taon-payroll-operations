@@ -31,6 +31,15 @@ jobs:
             --exclude '.github' \
             ./ ec2-user@${{ secrets.EC2_IP }}:/home/ec2-user/payroll-operations/
 
+      - name: Update DB_HOST in .env
+        run: |
+          ssh -i ~/.ssh/deploy_key.pem ec2-user@${{ secrets.EC2_IP }} << ENDSSH
+            cd /home/ec2-user/payroll-operations
+            if [ -f .env ]; then
+              sed -i 's/^DB_HOST=.*/DB_HOST=${{ secrets.DB_HOST }}/' .env
+            fi
+          ENDSSH
+
       - name: Install dependencies and restart
         run: |
           ssh -i ~/.ssh/deploy_key.pem ec2-user@${{ secrets.EC2_IP }} << 'ENDSSH'
