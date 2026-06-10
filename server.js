@@ -860,7 +860,7 @@ apiRouter.get('/api/operations/summary', async (req, res) => {
         INNER JOIN Users u ON u.id = ou.idUser
         LEFT JOIN MgmChain mc2 ON mc2.idUser = u.id AND mc2.nivel = 1
         WHERE u.internalUser = 0
-          AND DATE(DATE_SUB(u.cdate, INTERVAL 3 HOUR)) = CURDATE()
+          AND DATE(DATE_SUB(u.cdate, INTERVAL 3 HOUR)) = DATE(DATE_SUB(NOW(), INTERVAL 3 HOUR))
         ORDER BY u.cdate DESC
       `, op.codes);
 
@@ -1276,7 +1276,7 @@ apiRouter.get('/api/meli/summary', async (req, res) => {
         (SELECT COUNT(*) FROM user_chip_latest WHERE tipoChip = 'e-sim') AS ativosChipEsim,
         (SELECT COUNT(DISTINCT am.idUser) FROM ativos_meli am INNER JOIN UsersMetadata umC ON umC.idUser = am.idUser AND umC.name = 'getTypeChip' AND umC.value = 'physical' WHERE NOT EXISTS (SELECT 1 FROM SimCards sc WHERE sc.idUser = am.idUser)) AS pendenteFisico,
         (SELECT COUNT(DISTINCT am.idUser) FROM ativos_meli am INNER JOIN UsersMetadata umC ON umC.idUser = am.idUser AND umC.name = 'getTypeChip' AND umC.value = 'esim' WHERE NOT EXISTS (SELECT 1 FROM SimCards sc WHERE sc.idUser = am.idUser)) AS pendenteEsim,
-        (SELECT COUNT(*) FROM user_data WHERE DATE(DATE_SUB(cdate, INTERVAL 3 HOUR)) = CURDATE()) AS cadastradosHoje
+        (SELECT COUNT(*) FROM user_data WHERE DATE(DATE_SUB(cdate, INTERVAL 3 HOUR)) = DATE(DATE_SUB(NOW(), INTERVAL 3 HOUR))) AS cadastradosHoje
     `, [currentRefDate]);
 
     // Query 1b: APN (pesada, roda em paralelo)
@@ -1302,8 +1302,8 @@ apiRouter.get('/api/meli/summary', async (req, res) => {
         WHERE u.internalUser = 0
       )
       SELECT
-        (SELECT COUNT(*) FROM user_data ud2 INNER JOIN SimCards sc ON sc.idUser = ud2.idUser WHERE DATE(DATE_SUB((SELECT MIN(h.vdate) FROM SimCards FOR SYSTEM_TIME ALL h WHERE h.id = sc.id AND h.idUser IS NOT NULL), INTERVAL 3 HOUR)) = CURDATE()) AS chipsHoje,
-        (SELECT COUNT(DISTINCT ud2.idUser) FROM user_data ud2 INNER JOIN SimCards sc ON sc.idUser = ud2.idUser WHERE EXISTS (SELECT 1 FROM IPsUsers ip WHERE ip.imsi = sc.imsi AND DATE(DATE_SUB(ip.cdate, INTERVAL 3 HOUR)) = CURDATE()) OR EXISTS (SELECT 1 FROM IPsIMSIsTemp ipt WHERE ipt.imsi = sc.imsi AND DATE(DATE_SUB(ipt.cdate, INTERVAL 3 HOUR)) = CURDATE())) AS apnHoje
+        (SELECT COUNT(*) FROM user_data ud2 INNER JOIN SimCards sc ON sc.idUser = ud2.idUser WHERE DATE(DATE_SUB((SELECT MIN(h.vdate) FROM SimCards FOR SYSTEM_TIME ALL h WHERE h.id = sc.id AND h.idUser IS NOT NULL), INTERVAL 3 HOUR)) = DATE(DATE_SUB(NOW(), INTERVAL 3 HOUR))) AS chipsHoje,
+        (SELECT COUNT(DISTINCT ud2.idUser) FROM user_data ud2 INNER JOIN SimCards sc ON sc.idUser = ud2.idUser WHERE EXISTS (SELECT 1 FROM IPsUsers ip WHERE ip.imsi = sc.imsi AND DATE(DATE_SUB(ip.cdate, INTERVAL 3 HOUR)) = DATE(DATE_SUB(NOW(), INTERVAL 3 HOUR))) OR EXISTS (SELECT 1 FROM IPsIMSIsTemp ipt WHERE ipt.imsi = sc.imsi AND DATE(DATE_SUB(ipt.cdate, INTERVAL 3 HOUR)) = DATE(DATE_SUB(NOW(), INTERVAL 3 HOUR)))) AS apnHoje
     `);
 
     // Query 3: Receita
