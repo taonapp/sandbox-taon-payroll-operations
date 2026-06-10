@@ -899,6 +899,8 @@ apiRouter.get('/api/operations/day', async (req, res) => {
     if (!op) return res.status(400).json({ error: 'op inválido' });
 
     const placeholders = op.codes.map(() => '?').join(',');
+    const now = new Date();
+    const currentRefDate = now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0');
 
     // Cadastros do dia
     const [cadastros] = await pool.query(`
@@ -968,8 +970,11 @@ apiRouter.get('/api/operations/day', async (req, res) => {
         sc.\`type\` AS tipoChip,
         sc.idUser,
         u.name AS userName,
+        u.email,
         c.companyName,
         COALESCE(s.name, 'Sem spot') AS spotName,
+        umPhone.value AS whatsapp,
+        mel.currentLevelName AS nivel,
         DATE_FORMAT(DATE_SUB(u.cdate, INTERVAL 3 HOUR), '%Y-%m-%dT%H:%i:%s') AS dataCadastro,
         DATE_FORMAT(DATE_SUB(
           (SELECT MIN(h.vdate) FROM SimCards FOR SYSTEM_TIME ALL h WHERE h.id = sc.id AND h.idUser IS NOT NULL),
@@ -980,13 +985,16 @@ apiRouter.get('/api/operations/day', async (req, res) => {
       INNER JOIN SimCards sc ON sc.idUser = u.id
       LEFT JOIN Company c ON c.id = sc.idCompany
       LEFT JOIN Spots s ON s.id = sc.idSpot
+      LEFT JOIN UsersMetadata umPhone ON umPhone.idUser = u.id AND umPhone.name = 'phone_number'
+      LEFT JOIN UsersMetadata umId ON umId.idUser = u.id AND umId.name = 'identifier'
+      LEFT JOIN Meli mel ON mel.identifier = umId.value AND mel.refDate = ?
       WHERE u.internalUser = 0
         AND DATE(DATE_SUB(
           (SELECT MIN(h.vdate) FROM SimCards FOR SYSTEM_TIME ALL h WHERE h.id = sc.id AND h.idUser IS NOT NULL),
           INTERVAL 3 HOUR
         )) = ?
       ORDER BY dataAssociacao ASC
-    `, [...op.codes, date]);
+    `, [...op.codes, currentRefDate, date]);
 
     const titulares = cadastros.filter(r => r.tipo === 'Titular').length;
     const dependentes = cadastros.filter(r => r.tipo === 'Dependente').length;

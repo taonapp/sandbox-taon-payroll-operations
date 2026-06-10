@@ -774,6 +774,7 @@ $('chipMonthNext').addEventListener('click', () => {
   loadChipTimeline();
 });
 
+
 $('refDateSelect').addEventListener('change', (e) => {
   selectedRefDate = e.target.value;
   loadUsers();

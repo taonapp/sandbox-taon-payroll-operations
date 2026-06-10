@@ -309,6 +309,10 @@
   margin-bottom: 4px;
 }
 
+.table-header .card-label {
+  margin-bottom: 0;
+}
+
 .table-controls {
   display: flex;
   align-items: center;

@@ -2,6 +2,8 @@ const $ = (id) => document.getElementById(id);
 
 let selectedDate = '';
 let selectedOp = 'meli';
+let allChipsData = [];
+let chipTypeFilter = 'all';
 
 function todayKey() {
   const now = new Date();
@@ -123,12 +125,21 @@ function renderDay(data) {
   }
 
   // Chips table
+  allChipsData = data.chips;
+  renderChipsTable();
+}
+
+function renderChipsTable() {
   const chipBody = $('dayChipBody');
   chipBody.innerHTML = '';
-  if (data.chips.length === 0) {
+  const filtered = chipTypeFilter === 'all'
+    ? allChipsData
+    : allChipsData.filter(r => r.tipoChip === chipTypeFilter);
+  $('chipFilterCount').textContent = `${filtered.length} chip${filtered.length !== 1 ? 's' : ''}`;
+  if (filtered.length === 0) {
     chipBody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text-muted)">Nenhum chip associado neste dia</td></tr>';
   } else {
-    data.chips.forEach(r => {
+    filtered.forEach(r => {
       const tr = document.createElement('tr');
       const tipoLabel = r.tipoChip === 'fisico' ? '<span style="color:var(--blue)">Físico</span>'
         : r.tipoChip === 'e-sim' ? '<span style="color:var(--purple)">eSIM</span>' : '-';
@@ -151,6 +162,42 @@ function renderDay(data) {
 async function loadAll() {
   await loadDay();
 }
+
+// Chip type filter
+document.querySelectorAll('[data-chip-type]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('[data-chip-type]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    chipTypeFilter = btn.dataset.chipType;
+    renderChipsTable();
+  });
+});
+
+// Export filtered chips contact
+$('exportChipContato').addEventListener('click', () => {
+  const filtered = chipTypeFilter === 'all'
+    ? allChipsData
+    : allChipsData.filter(r => r.tipoChip === chipTypeFilter);
+  if (filtered.length === 0) return;
+  const escape = (v) => {
+    const s = String(v || '');
+    return s.includes(',') || s.includes('"') || s.includes('\n') ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const nivelMap = { Silver: 'Prata', Gold: 'Ouro', Platinum: 'Platina' };
+  const header = 'Nome,Data Cadastro,Nível,WhatsApp,Email';
+  const lines = filtered.map(r => {
+    const dt = r.dataCadastro ? new Date(r.dataCadastro).toLocaleDateString('pt-BR') : '';
+    return [escape(r.userName), dt, nivelMap[r.nivel] || r.nivel || '', r.whatsapp || '', r.email || ''].join(',');
+  });
+  const csv = [header, ...lines].join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'meli26_chips_contato.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+});
 
 // Init
 selectedDate = todayKey();

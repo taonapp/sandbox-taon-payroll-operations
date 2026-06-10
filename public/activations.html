@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Novas Ativações - Payroll Ops</title>
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="meli.css">
   <link rel="stylesheet" href="activations.css">
   <link rel="stylesheet" href="refresh.css">
 </head>
@@ -135,7 +136,18 @@
       <!-- Tabela de chips -->
       <section class="table-section">
         <div class="card">
-          <span class="card-label">Chips Associados</span>
+          <div class="table-header">
+            <span class="card-label">Chips Associados</span>
+            <div class="table-controls">
+              <div class="filter-group">
+                <button class="filter-btn active" data-chip-type="all">Todos</button>
+                <button class="filter-btn" data-chip-type="fisico">Físico</button>
+                <button class="filter-btn" data-chip-type="e-sim">eSIM</button>
+              </div>
+              <button class="export-btn" id="exportChipContato">Exportar para contato</button>
+              <span class="result-count" id="chipFilterCount"></span>
+            </div>
+          </div>
           <div class="table-scroll">
             <table class="data-table">
               <thead>
