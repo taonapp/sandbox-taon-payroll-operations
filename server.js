@@ -795,7 +795,7 @@ apiRouter.get('/api/operations/summary', async (req, res) => {
         )
         SELECT
           DATE_FORMAT(DATE_SUB(
-            (SELECT MIN(h.vdate) FROM SimCards FOR SYSTEM_TIME ALL h WHERE h.id = sc.id AND h.idUser IS NOT NULL),
+            (SELECT MIN(h.vdate) FROM SimCards FOR SYSTEM_TIME ALL h WHERE h.id = sc.id AND h.idUser = sc.idUser),
             INTERVAL 3 HOUR
           ), '%Y-%m-%d') AS dia,
           sc.\`type\` AS tipoChip,
@@ -805,7 +805,7 @@ apiRouter.get('/api/operations/summary', async (req, res) => {
         INNER JOIN SimCards sc ON sc.idUser = u.id
         WHERE u.internalUser = 0
           AND DATE_FORMAT(DATE_SUB(
-            (SELECT MIN(h.vdate) FROM SimCards FOR SYSTEM_TIME ALL h WHERE h.id = sc.id AND h.idUser IS NOT NULL),
+            (SELECT MIN(h.vdate) FROM SimCards FOR SYSTEM_TIME ALL h WHERE h.id = sc.id AND h.idUser = sc.idUser),
             INTERVAL 3 HOUR
           ), '%Y-%m') = ?
         GROUP BY dia, sc.\`type\` ORDER BY dia ASC
@@ -977,7 +977,7 @@ apiRouter.get('/api/operations/day', async (req, res) => {
         mel.currentLevelName AS nivel,
         DATE_FORMAT(DATE_SUB(u.cdate, INTERVAL 3 HOUR), '%Y-%m-%dT%H:%i:%s') AS dataCadastro,
         DATE_FORMAT(DATE_SUB(
-          (SELECT MIN(h.vdate) FROM SimCards FOR SYSTEM_TIME ALL h WHERE h.id = sc.id AND h.idUser IS NOT NULL),
+          (SELECT MIN(h.vdate) FROM SimCards FOR SYSTEM_TIME ALL h WHERE h.id = sc.id AND h.idUser = sc.idUser),
           INTERVAL 3 HOUR
         ), '%Y-%m-%dT%H:%i:%s') AS dataAssociacao
       FROM op_users ou
@@ -990,7 +990,7 @@ apiRouter.get('/api/operations/day', async (req, res) => {
       LEFT JOIN Meli mel ON mel.identifier = umId.value AND mel.refDate = ?
       WHERE u.internalUser = 0
         AND DATE(DATE_SUB(
-          (SELECT MIN(h.vdate) FROM SimCards FOR SYSTEM_TIME ALL h WHERE h.id = sc.id AND h.idUser IS NOT NULL),
+          (SELECT MIN(h.vdate) FROM SimCards FOR SYSTEM_TIME ALL h WHERE h.id = sc.id AND h.idUser = sc.idUser),
           INTERVAL 3 HOUR
         )) = ?
       ORDER BY dataAssociacao ASC
@@ -1325,7 +1325,7 @@ apiRouter.get('/api/meli/summary', async (req, res) => {
         WHERE u.internalUser = 0
       )
       SELECT
-        (SELECT COUNT(*) FROM user_data ud2 INNER JOIN SimCards sc ON sc.idUser = ud2.idUser WHERE DATE(DATE_SUB((SELECT MIN(h.vdate) FROM SimCards FOR SYSTEM_TIME ALL h WHERE h.id = sc.id AND h.idUser IS NOT NULL), INTERVAL 3 HOUR)) = DATE(DATE_SUB(NOW(), INTERVAL 3 HOUR))) AS chipsHoje,
+        (SELECT COUNT(*) FROM user_data ud2 INNER JOIN SimCards sc ON sc.idUser = ud2.idUser WHERE DATE(DATE_SUB((SELECT MIN(h.vdate) FROM SimCards FOR SYSTEM_TIME ALL h WHERE h.id = sc.id AND h.idUser = sc.idUser), INTERVAL 3 HOUR)) = DATE(DATE_SUB(NOW(), INTERVAL 3 HOUR))) AS chipsHoje,
         (SELECT COUNT(DISTINCT ud2.idUser) FROM user_data ud2 INNER JOIN SimCards sc ON sc.idUser = ud2.idUser WHERE EXISTS (SELECT 1 FROM IPsUsers ip WHERE ip.imsi = sc.imsi AND DATE(DATE_SUB(ip.cdate, INTERVAL 3 HOUR)) = DATE(DATE_SUB(NOW(), INTERVAL 3 HOUR))) OR EXISTS (SELECT 1 FROM IPsIMSIsTemp ipt WHERE ipt.imsi = sc.imsi AND DATE(DATE_SUB(ipt.cdate, INTERVAL 3 HOUR)) = DATE(DATE_SUB(NOW(), INTERVAL 3 HOUR)))) AS apnHoje
     `);
 
@@ -1449,7 +1449,7 @@ apiRouter.get('/api/meli/chips', async (req, res) => {
         sc.type AS tipoChip,
         CASE sc.idStatus WHEN 1 THEN 'Ativo' WHEN 2 THEN 'Inativo' ELSE CONCAT('Status ', sc.idStatus) END AS statusChip,
         DATE_FORMAT(DATE_SUB(
-          (SELECT MIN(h.vdate) FROM SimCards FOR SYSTEM_TIME ALL h WHERE h.id = sc.id AND h.idUser IS NOT NULL),
+          (SELECT MIN(h.vdate) FROM SimCards FOR SYSTEM_TIME ALL h WHERE h.id = sc.id AND h.idUser = sc.idUser),
           INTERVAL 3 HOUR
         ), '%Y-%m-%dT%H:%i:%s') AS dataAssociacao,
         DATE_FORMAT(DATE_SUB(apn.primeiraApn, INTERVAL 3 HOUR), '%Y-%m-%dT%H:%i:%s') AS primeiraApn,
@@ -1511,7 +1511,7 @@ apiRouter.get('/api/stock/spot-chips', async (req, res) => {
         u.name AS userName,
         sc.qrcodeEsim,
         DATE_FORMAT(DATE_SUB(
-          (SELECT MIN(h.vdate) FROM SimCards FOR SYSTEM_TIME ALL h WHERE h.id = sc.id AND h.idUser IS NOT NULL),
+          (SELECT MIN(h.vdate) FROM SimCards FOR SYSTEM_TIME ALL h WHERE h.id = sc.id AND h.idUser = sc.idUser),
           INTERVAL 3 HOUR
         ), '%Y-%m-%dT%H:%i:%s') AS dataAssociacao,
         DATE_FORMAT(DATE_SUB(sc.vdate, INTERVAL 3 HOUR), '%Y-%m-%dT%H:%i:%s') AS vdate,
@@ -1612,7 +1612,7 @@ apiRouter.get('/api/meli/chips-timeline', async (req, res) => {
       )
       SELECT
         DATE_FORMAT(DATE_SUB(
-          (SELECT MIN(h.vdate) FROM SimCards FOR SYSTEM_TIME ALL h WHERE h.id = sc.id AND h.idUser IS NOT NULL),
+          (SELECT MIN(h.vdate) FROM SimCards FOR SYSTEM_TIME ALL h WHERE h.id = sc.id AND h.idUser = sc.idUser),
           INTERVAL 3 HOUR
         ), '%Y-%m-%d') AS dia,
         sc.type AS tipoChip,
@@ -1621,7 +1621,7 @@ apiRouter.get('/api/meli/chips-timeline', async (req, res) => {
       INNER JOIN Users u ON u.id = mu.idUser
       INNER JOIN SimCards sc ON sc.idUser = u.id
       WHERE u.internalUser = 0
-        ${req.query.month ? "AND DATE_FORMAT(DATE_SUB((SELECT MIN(h.vdate) FROM SimCards FOR SYSTEM_TIME ALL h WHERE h.id = sc.id AND h.idUser IS NOT NULL), INTERVAL 3 HOUR), '%Y-%m') = ?" : ''}
+        ${req.query.month ? "AND DATE_FORMAT(DATE_SUB((SELECT MIN(h.vdate) FROM SimCards FOR SYSTEM_TIME ALL h WHERE h.id = sc.id AND h.idUser = sc.idUser), INTERVAL 3 HOUR), '%Y-%m') = ?" : ''}
       GROUP BY dia, sc.type
       ORDER BY dia ASC, sc.type ASC
     `, req.query.month ? [req.query.month] : []);
@@ -1994,7 +1994,7 @@ apiRouter.get('/api/stock/company/:id', async (req, res) => {
       pool.query(`
         SELECT
           DATE_FORMAT(DATE_SUB(
-            (SELECT MIN(h.vdate) FROM SimCards FOR SYSTEM_TIME ALL h WHERE h.id = sc.id AND h.idUser IS NOT NULL),
+            (SELECT MIN(h.vdate) FROM SimCards FOR SYSTEM_TIME ALL h WHERE h.id = sc.id AND h.idUser = sc.idUser),
             INTERVAL 3 HOUR
           ), '%Y-%m-%d') AS dia,
           sc.\`type\` AS tipoChip,
