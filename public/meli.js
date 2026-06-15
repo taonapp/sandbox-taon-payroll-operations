@@ -846,6 +846,25 @@ $('exportElegiveisChip').addEventListener('click', async () => {
   }
 });
 
+$('exportNaoApnFunil').addEventListener('click', async () => {
+  try {
+    const res = await fetch('/payroll-ops/api/meli/nao-apn');
+    if (!res.ok) throw new Error('API error');
+    const rows = await res.json();
+    if (rows.length === 0) return;
+    const csv = 'Linhas\n' + rows.map(r => r.imsi || '').join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'meli26_linhas_sem_apn.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error('Export nao-apn error:', err);
+  }
+});
+
 $('exportEsimContato').addEventListener('click', async () => {
   try {
     const res = await fetch('/payroll-ops/api/meli/pending-esim-contato');
