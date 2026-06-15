@@ -297,6 +297,10 @@ function renderSummary(s) {
   // Receita
   $('receitaTotal').textContent = formatCurrency(s.receitaTotal);
   $('ticketMedio').textContent = formatCurrency(s.ticketMedio);
+  $('qtdChipsAtivos').textContent = fmt(s.qtdChipsAtivos || 0);
+  $('receitaChipsAtivos').textContent = formatCurrency(s.receitaChipsAtivos || 0);
+  $('qtdChipsOciosos').textContent = fmt(2000 - (s.qtdChipsAtivos || 0));
+  $('receitaChipsOciosos').textContent = formatCurrency(s.receitaChipsOciosos || 0);
 }
 
 function formatRefDateLabel(rd) {

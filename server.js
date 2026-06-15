@@ -1329,25 +1329,24 @@ apiRouter.get('/api/meli/summary', async (req, res) => {
         (SELECT COUNT(DISTINCT ud2.idUser) FROM user_data ud2 INNER JOIN SimCards sc ON sc.idUser = ud2.idUser WHERE EXISTS (SELECT 1 FROM IPsUsers ip WHERE ip.imsi = sc.imsi AND DATE(DATE_SUB(ip.cdate, INTERVAL 3 HOUR)) = DATE(DATE_SUB(NOW(), INTERVAL 3 HOUR))) OR EXISTS (SELECT 1 FROM IPsIMSIsTemp ipt WHERE ipt.imsi = sc.imsi AND DATE(DATE_SUB(ipt.cdate, INTERVAL 3 HOUR)) = DATE(DATE_SUB(NOW(), INTERVAL 3 HOUR)))) AS apnHoje
     `);
 
-    // Query 3: Receita
-    const q3 = pool.query(`
-      WITH meli_users AS (
-        SELECT DISTINCT mc.idUser
-        FROM MgmChain mc
-        WHERE mc.mgmInvCode = 'MELI26'
-          AND mc.nivel = 1
+    // Query 3: Receita (planos dos users com chip ativo + chips não distribuídos * R$5,60)
+    const q3 = pool.query(`${meliCTE},
+      chips_com_plano AS (
+        SELECT ucl.idUser, rpc.amount
+        FROM user_chip_latest ucl
+        INNER JOIN RecurringPurchasesConfig rpc ON rpc.idUser = ucl.idUser
+        INNER JOIN (
+          SELECT idUser, MAX(id) AS maxId FROM RecurringPurchasesConfig WHERE idStatus = 1 GROUP BY idUser
+        ) latest ON latest.idUser = rpc.idUser AND latest.maxId = rpc.id
       )
       SELECT
-        COALESCE(SUM(rpc.amount), 0) AS receitaTotal,
-        ROUND(COALESCE(AVG(rpc.amount), 0), 2) AS ticketMedio
-      FROM meli_users mu
-      INNER JOIN Users u ON u.id = mu.idUser
-      INNER JOIN RecurringPurchasesConfig rpc ON rpc.idUser = u.id
-      LEFT JOIN (
-        SELECT idUser, MAX(id) AS maxId FROM RecurringPurchasesConfig WHERE idStatus = 1 GROUP BY idUser
-      ) latest ON latest.idUser = rpc.idUser AND latest.maxId = rpc.id
-      WHERE u.internalUser = 0 AND latest.maxId IS NOT NULL
-    `);
+        ROUND(COALESCE(SUM(cp.amount), 0) + (2000 - (SELECT COUNT(*) FROM user_chip_latest)) * 5.60, 2) AS receitaTotal,
+        ROUND(COALESCE(AVG(cp.amount), 0), 2) AS ticketMedio,
+        COALESCE(SUM(cp.amount), 0) AS receitaChipsAtivos,
+        (SELECT COUNT(*) FROM user_chip_latest) AS qtdChipsAtivos,
+        ROUND((2000 - (SELECT COUNT(*) FROM user_chip_latest)) * 5.60, 2) AS receitaChipsOciosos
+      FROM chips_com_plano cp
+    `, [currentRefDate]);
 
     const [[rows], [apnRows], [dailyRows], [receitaRows]] = await Promise.all([q1, q1b, q2, q3]);
     const result = { ...rows[0], ...apnRows[0], ...dailyRows[0], ...receitaRows[0] };
