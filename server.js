@@ -1274,7 +1274,7 @@ apiRouter.get('/api/meli/summary', async (req, res) => {
       ),
       user_chip AS (
         SELECT am.idUser, sc.type AS tipoChip, sc.imsi,
-          ROW_NUMBER() OVER (PARTITION BY am.idUser ORDER BY sc.id DESC) AS rn
+          ROW_NUMBER() OVER (PARTITION BY am.idUser ORDER BY CASE WHEN sc.idStatus IN (3,8,9,14,18,22) THEN 0 ELSE 1 END, sc.id DESC) AS rn
         FROM ativos_meli am
         INNER JOIN SimCards sc ON sc.idUser = am.idUser
       ),
@@ -1403,27 +1403,43 @@ apiRouter.get('/api/meli/apn', async (req, res) => {
 // Chips que NAO bateram na APN
 apiRouter.get('/api/meli/nao-apn', async (req, res) => {
   try {
+    const now = new Date();
+    const currentRefDate = now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0');
     const [rows] = await pool.query(`
       WITH meli_users AS (
         SELECT DISTINCT mc.idUser
         FROM MgmChain mc
         WHERE mc.mgmInvCode = 'MELI26'
           AND mc.nivel = 1
+      ),
+      ativos_meli AS (
+        SELECT mu.idUser
+        FROM meli_users mu
+        INNER JOIN Users u ON u.id = mu.idUser
+        INNER JOIN UsersMetadata um ON um.idUser = u.id AND um.name = 'identifier'
+        INNER JOIN Meli mel ON mel.identifier = um.value AND mel.refDate = ?
+        WHERE u.internalUser = 0
+      ),
+      user_chip AS (
+        SELECT am.idUser, sc.imsi, sc.iccid, sc.type AS tipoChip, sc.idStatus,
+          ROW_NUMBER() OVER (PARTITION BY am.idUser ORDER BY CASE WHEN sc.idStatus IN (3,8,9,14,18,22) THEN 0 ELSE 1 END, sc.id DESC) AS rn
+        FROM ativos_meli am
+        INNER JOIN SimCards sc ON sc.idUser = am.idUser
+      ),
+      user_chip_latest AS (
+        SELECT idUser, imsi, iccid, tipoChip, idStatus FROM user_chip WHERE rn = 1
       )
       SELECT
-        u.id AS idUser,
-        sc.imsi,
-        sc.iccid,
-        sc.type AS tipoChip,
-        CASE sc.idStatus WHEN 1 THEN 'Ativo' WHEN 2 THEN 'Inativo' ELSE CONCAT('Status ', sc.idStatus) END AS statusChip
-      FROM meli_users mu
-      INNER JOIN Users u ON u.id = mu.idUser
-      INNER JOIN SimCards sc ON sc.idUser = u.id
-      WHERE u.internalUser = 0
-        AND NOT EXISTS (SELECT 1 FROM IPsUsers ip WHERE ip.imsi = sc.imsi)
-        AND NOT EXISTS (SELECT 1 FROM IPsIMSIsTemp ipt WHERE ipt.imsi = sc.imsi)
-      ORDER BY u.id, sc.imsi
-    `);
+        uc.idUser,
+        uc.imsi,
+        uc.iccid,
+        uc.tipoChip,
+        CASE uc.idStatus WHEN 1 THEN 'Ativo' WHEN 2 THEN 'Inativo' ELSE CONCAT('Status ', uc.idStatus) END AS statusChip
+      FROM user_chip_latest uc
+      WHERE NOT EXISTS (SELECT 1 FROM IPsUsers ip WHERE ip.imsi = uc.imsi)
+        AND NOT EXISTS (SELECT 1 FROM IPsIMSIsTemp ipt WHERE ipt.imsi = uc.imsi)
+      ORDER BY uc.idUser, uc.imsi
+    `, [currentRefDate]);
     res.json(rows);
   } catch (err) {
     console.error('Meli nao-apn error:', err);
@@ -1582,17 +1598,25 @@ apiRouter.get('/api/meli/elegiveis-com-chip', async (req, res) => {
         FROM MgmChain mc
         WHERE mc.mgmInvCode = 'MELI26'
           AND mc.nivel = 1
+      ),
+      ativos_meli AS (
+        SELECT mu.idUser, um.value AS identifier
+        FROM meli_users mu
+        INNER JOIN Users u ON u.id = mu.idUser
+        INNER JOIN UsersMetadata um ON um.idUser = u.id AND um.name = 'identifier'
+        INNER JOIN Meli mel ON mel.identifier = um.value AND mel.refDate = ?
+        WHERE u.internalUser = 0
+      ),
+      user_chip AS (
+        SELECT am.idUser, am.identifier, sc.type AS tipoChip,
+          ROW_NUMBER() OVER (PARTITION BY am.idUser ORDER BY CASE WHEN sc.idStatus IN (3,8,9,14,18,22) THEN 0 ELSE 1 END, sc.id DESC) AS rn
+        FROM ativos_meli am
+        INNER JOIN SimCards sc ON sc.idUser = am.idUser
       )
-      SELECT DISTINCT um.value AS identifier
-      FROM meli_users mu
-      INNER JOIN Users u ON u.id = mu.idUser
-      INNER JOIN UsersMetadata um ON um.idUser = u.id AND um.name = 'identifier'
-      INNER JOIN Meli mel ON mel.identifier = um.value AND mel.refDate = ?
-      WHERE u.internalUser = 0
-        AND EXISTS (SELECT 1 FROM SimCards sc WHERE sc.idUser = u.id)
+      SELECT identifier, tipoChip FROM user_chip WHERE rn = 1
     `, [currentRefDate]);
 
-    res.json(rows.map(r => r.identifier));
+    res.json(rows.map(r => ({ identifier: r.identifier, tipoChip: r.tipoChip })));
   } catch (err) {
     console.error('Meli elegiveis com chip error:', err);
     res.status(500).json({ error: 'Erro ao consultar elegíveis com chip' });

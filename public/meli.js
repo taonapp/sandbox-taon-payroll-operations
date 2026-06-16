@@ -835,9 +835,9 @@ $('exportElegiveisChip').addEventListener('click', async () => {
   try {
     const res = await fetch('/payroll-ops/api/meli/elegiveis-com-chip');
     if (!res.ok) throw new Error('API error');
-    const ids = await res.json();
-    if (ids.length === 0) return;
-    const csv = 'DRIVER_ID\n' + ids.join('\n');
+    const rows = await res.json();
+    if (rows.length === 0) return;
+    const csv = 'DRIVER_ID,TIPO_CHIP\n' + rows.map(r => r.identifier + ',' + (r.tipoChip === 'fisico' ? 'Físico' : r.tipoChip === 'e-sim' ? 'eSIM' : r.tipoChip || '')).join('\n');
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
