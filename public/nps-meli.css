@@ -1,0 +1,109 @@
+/* NPS Score card */
+.nps-score-card { border-top: 3px solid var(--blue); }
+.nps-score-card.score-positive { border-top-color: var(--green); }
+.nps-score-card.score-negative { border-top-color: #ef4444; }
+
+.nps-score-value { font-size: 40px !important; font-weight: 700; }
+.nps-score-card.score-positive .nps-score-value { color: var(--green); }
+.nps-score-card.score-negative .nps-score-value { color: #ef4444; }
+.nps-score-card.score-neutral .nps-score-value { color: var(--orange); }
+
+/* Distribuicao NPS bar */
+.nps-bar-container {
+  display: flex;
+  height: 20px;
+  border-radius: 6px;
+  overflow: hidden;
+  margin: 16px 0 12px;
+  background: var(--border);
+}
+
+.nps-bar-seg {
+  height: 100%;
+  transition: width 0.4s ease;
+  min-width: 0;
+}
+
+.nps-seg-detrator { background: #ef4444; }
+.nps-seg-neutro   { background: var(--orange); }
+.nps-seg-promo    { background: var(--green); }
+
+.nps-bar-legend {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.nps-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 4px;
+}
+
+.nps-dot-detrator { background: #ef4444; }
+.nps-dot-neutro   { background: var(--orange); }
+.nps-dot-promo    { background: var(--green); }
+
+/* Horizontal bar charts */
+.nps-h-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.nps-h-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.nps-h-bar-label {
+  width: 220px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nps-h-bar-track {
+  flex: 1;
+  height: 10px;
+  background: var(--border);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.nps-h-bar-fill {
+  height: 100%;
+  border-radius: 5px;
+  background: var(--blue);
+  transition: width 0.4s ease;
+}
+
+.nps-h-bar-fill.green  { background: var(--green); }
+.nps-h-bar-fill.orange { background: var(--orange); }
+.nps-h-bar-fill.red    { background: #ef4444; }
+.nps-h-bar-fill.purple { background: var(--purple); }
+
+.nps-h-bar-pct {
+  width: 40px;
+  text-align: right;
+  color: var(--text);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.nps-h-bar-count {
+  width: 30px;
+  text-align: right;
+  color: var(--text-muted);
+  font-size: 12px;
+  flex-shrink: 0;
+}

@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const mysql = require('mysql2/promise');
+const { Pool: PgPool } = require('pg');
 const path = require('path');
 const fs = require('fs');
 const XLSX = require('xlsx');
@@ -17,6 +18,12 @@ const pool = mysql.createPool({
   waitForConnections: true,
   connectionLimit: 5,
   queueLimit: 0,
+});
+
+const pgPool = new PgPool({
+  connectionString: process.env.SUPABASE_DB_URL,
+  ssl: { rejectUnauthorized: false },
+  max: 5,
 });
 
 
@@ -2194,6 +2201,102 @@ apiRouter.post('/api/dss-check', express.json({ limit: '1mb' }), async (req, res
     res.json({ since, total: rows.length, comSessao, semSessao, detalhes: rows });
   } catch (err) {
     console.error('DSS check error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// NPS Meli — Supabase (PostgreSQL)
+apiRouter.get('/api/nps-meli', async (req, res) => {
+  try {
+    const [overview, npsRows, q1Rows, q1bRows, q3Rows, q4Rows] = await Promise.all([
+      pgPool.query(`
+        SELECT COUNT(DISTINCT id) AS total, MAX(respondedat) AS ultima_atualizacao
+        FROM crm.formresponses WHERE formid = 1
+      `),
+      pgPool.query(`
+        SELECT responsevalue::int AS score, COUNT(*) AS count
+        FROM crm.formquestionresponses WHERE questionid = 3
+        GROUP BY responsevalue::int ORDER BY score
+      `),
+      pgPool.query(`
+        SELECT responsevalue, COUNT(*) AS count
+        FROM crm.formquestionresponses WHERE questionid = 1
+        GROUP BY responsevalue
+      `),
+      pgPool.query(`
+        SELECT qr.responsevalue, qo.optiontext, COUNT(*) AS count
+        FROM crm.formquestionresponses qr
+        LEFT JOIN crm.formquestionoptions qo
+          ON qo.questionid = qr.questionid AND qo.optionvalue = qr.responsevalue
+        WHERE qr.questionid = 2
+        GROUP BY qr.responsevalue, qo.optiontext ORDER BY count DESC
+      `),
+      pgPool.query(`
+        SELECT qr.responsevalue, qo.optiontext, COUNT(*) AS count
+        FROM crm.formquestionresponses qr
+        LEFT JOIN crm.formquestionoptions qo
+          ON qo.questionid = qr.questionid AND qo.optionvalue = qr.responsevalue
+        WHERE qr.questionid = 4
+        GROUP BY qr.responsevalue, qo.optiontext ORDER BY qr.responsevalue
+      `),
+      pgPool.query(`
+        SELECT responsevalue, COUNT(*) AS count
+        FROM crm.formquestionresponses WHERE questionid = 5
+        GROUP BY responsevalue ORDER BY responsevalue::int
+      `),
+    ]);
+
+    const npsData = npsRows.rows;
+    const totalNps = npsData.reduce((s, r) => s + Number(r.count), 0);
+    const promotores = npsData.filter(r => r.score >= 9).reduce((s, r) => s + Number(r.count), 0);
+    const detratores = npsData.filter(r => r.score <= 6).reduce((s, r) => s + Number(r.count), 0);
+    const neutros = totalNps - promotores - detratores;
+    const npsScore = totalNps > 0 ? Math.round(((promotores - detratores) / totalNps) * 100) : 0;
+
+    const q1 = q1Rows.rows;
+    const ativaram = Number((q1.find(r => r.responsevalue === 'op1') || {}).count || 0);
+    const naoAtivaram = Number((q1.find(r => r.responsevalue === 'op2') || {}).count || 0);
+    const totalQ1 = ativaram + naoAtivaram;
+
+    res.json({
+      totalRespostas: Number(overview.rows[0].total),
+      ultimaAtualizacao: overview.rows[0].ultima_atualizacao,
+      nps: {
+        score: npsScore,
+        promotores,
+        neutros,
+        detratores,
+        total: totalNps,
+        pctPromo: totalNps ? Math.round((promotores / totalNps) * 100) : 0,
+        pctNeutro: totalNps ? Math.round((neutros / totalNps) * 100) : 0,
+        pctDetrator: totalNps ? Math.round((detratores / totalNps) * 100) : 0,
+      },
+      ativacao: {
+        ativaram,
+        naoAtivaram,
+        total: totalQ1,
+        pctAtivaram: totalQ1 ? Math.round((ativaram / totalQ1) * 100) : 0,
+      },
+      motivosNaoAtivacao: q1bRows.rows.map(r => ({
+        value: r.responsevalue,
+        label: r.optiontext || r.responsevalue,
+        count: Number(r.count),
+        pct: naoAtivaram > 0 ? Math.round((Number(r.count) / naoAtivaram) * 100) : 0,
+      })),
+      conectividade: q3Rows.rows.map(r => ({
+        value: r.responsevalue,
+        label: r.optiontext || r.responsevalue,
+        count: Number(r.count),
+        pct: ativaram > 0 ? Math.round((Number(r.count) / ativaram) * 100) : 0,
+      })),
+      motivacaoNivel: q4Rows.rows.map(r => ({
+        value: r.responsevalue,
+        count: Number(r.count),
+        pct: ativaram > 0 ? Math.round((Number(r.count) / ativaram) * 100) : 0,
+      })),
+    });
+  } catch (err) {
+    console.error('NPS Meli error:', err);
     res.status(500).json({ error: err.message });
   }
 });
