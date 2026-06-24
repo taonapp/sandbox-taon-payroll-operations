@@ -1,7 +1,6 @@
 require('dotenv').config();
 const express = require('express');
 const mysql = require('mysql2/promise');
-const { Pool: PgPool } = require('pg');
 const path = require('path');
 const fs = require('fs');
 const XLSX = require('xlsx');
@@ -20,12 +19,8 @@ const pool = mysql.createPool({
   queueLimit: 0,
 });
 
-const pgPool = new PgPool({
-  connectionString: process.env.SUPABASE_DB_URL,
-  ssl: { rejectUnauthorized: false },
-  max: 5,
-});
-
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
 
 const PREFIX = '/payroll-ops';
 const apiRouter = express.Router();
@@ -2205,96 +2200,101 @@ apiRouter.post('/api/dss-check', express.json({ limit: '1mb' }), async (req, res
   }
 });
 
-// NPS Meli — Supabase (PostgreSQL)
+// NPS Meli — CRM MariaDB
 apiRouter.get('/api/nps-meli', async (req, res) => {
   try {
-    const [overview, npsRows, q1Rows, q1bRows, q3Rows, q4Rows] = await Promise.all([
-      pgPool.query(`
-        SELECT COUNT(DISTINCT id) AS total, MAX(respondedat) AS ultima_atualizacao
-        FROM crm.formresponses WHERE formid = 1
-      `),
-      pgPool.query(`
-        SELECT responsevalue::int AS score, COUNT(*) AS count
-        FROM crm.formquestionresponses WHERE questionid = 3
-        GROUP BY responsevalue::int ORDER BY score
-      `),
-      pgPool.query(`
-        SELECT responsevalue, COUNT(*) AS count
-        FROM crm.formquestionresponses WHERE questionid = 1
-        GROUP BY responsevalue
-      `),
-      pgPool.query(`
-        SELECT qr.responsevalue, qo.optiontext, COUNT(*) AS count
-        FROM crm.formquestionresponses qr
-        LEFT JOIN crm.formquestionoptions qo
-          ON qo.questionid = qr.questionid AND qo.optionvalue = qr.responsevalue
-        WHERE qr.questionid = 2
-        GROUP BY qr.responsevalue, qo.optiontext ORDER BY count DESC
-      `),
-      pgPool.query(`
-        SELECT qr.responsevalue, qo.optiontext, COUNT(*) AS count
-        FROM crm.formquestionresponses qr
-        LEFT JOIN crm.formquestionoptions qo
-          ON qo.questionid = qr.questionid AND qo.optionvalue = qr.responsevalue
-        WHERE qr.questionid = 4
-        GROUP BY qr.responsevalue, qo.optiontext ORDER BY qr.responsevalue
-      `),
-      pgPool.query(`
-        SELECT responsevalue, COUNT(*) AS count
-        FROM crm.formquestionresponses WHERE questionid = 5
-        GROUP BY responsevalue ORDER BY responsevalue::int
-      `),
-    ]);
+    const conn = await pool.getConnection();
+    try {
+      const qOpts = `
+        SELECT fqr.responsevalue, fqo.optiontext, COUNT(*) AS count
+        FROM crm.FormQuestionResponses fqr
+        LEFT JOIN crm.FormQuestionOptions fqo
+          ON fqo.questionid = fqr.questionid AND fqo.optionvalue = fqr.responsevalue
+        WHERE fqr.questionid = ?
+        GROUP BY fqr.responsevalue, fqo.optiontext`;
 
-    const npsData = npsRows.rows;
-    const totalNps = npsData.reduce((s, r) => s + Number(r.count), 0);
-    const promotores = npsData.filter(r => r.score >= 9).reduce((s, r) => s + Number(r.count), 0);
-    const detratores = npsData.filter(r => r.score <= 6).reduce((s, r) => s + Number(r.count), 0);
-    const neutros = totalNps - promotores - detratores;
-    const npsScore = totalNps > 0 ? Math.round(((promotores - detratores) / totalNps) * 100) : 0;
+      const [[overview], [q1Data], [q1bData], [npsData], [q3Data], [q4Data], [comentarios]] = await Promise.all([
+        conn.query(`
+          SELECT COUNT(*) AS total, MAX(respondedat) AS ultima_atualizacao
+          FROM crm.FormResponses WHERE formid = 1`),
+        conn.query(qOpts, [1]),
+        conn.query(qOpts, [2]),
+        conn.query(`
+          SELECT responsevalue AS score, COUNT(*) AS count
+          FROM crm.FormQuestionResponses WHERE questionid = 3
+          GROUP BY responsevalue`, []),
+        conn.query(qOpts, [4]),
+        conn.query(qOpts, [5]),
+        conn.query(`
+          SELECT c.responsevalue AS texto, nps.responsevalue AS nps_score
+          FROM crm.FormQuestionResponses c
+          LEFT JOIN crm.FormQuestionResponses nps
+            ON nps.formresponseid = c.formresponseid AND nps.questionid = 3
+          WHERE c.questionid = 6 AND TRIM(c.responsevalue) != ''
+          ORDER BY CAST(nps.responsevalue AS SIGNED) DESC`, []),
+      ]);
 
-    const q1 = q1Rows.rows;
-    const ativaram = Number((q1.find(r => r.responsevalue === 'op1') || {}).count || 0);
-    const naoAtivaram = Number((q1.find(r => r.responsevalue === 'op2') || {}).count || 0);
-    const totalQ1 = ativaram + naoAtivaram;
+      const totalNps = npsData.reduce((s, r) => s + Number(r.count), 0);
+      const promotores = npsData.filter(r => Number(r.score) >= 9).reduce((s, r) => s + Number(r.count), 0);
+      const detratores = npsData.filter(r => Number(r.score) <= 6).reduce((s, r) => s + Number(r.count), 0);
+      const neutros = totalNps - promotores - detratores;
+      const npsScore = totalNps > 0 ? Math.round(((promotores - detratores) / totalNps) * 100) : 0;
 
-    res.json({
-      totalRespostas: Number(overview.rows[0].total),
-      ultimaAtualizacao: overview.rows[0].ultima_atualizacao,
-      nps: {
-        score: npsScore,
-        promotores,
-        neutros,
-        detratores,
-        total: totalNps,
-        pctPromo: totalNps ? Math.round((promotores / totalNps) * 100) : 0,
-        pctNeutro: totalNps ? Math.round((neutros / totalNps) * 100) : 0,
-        pctDetrator: totalNps ? Math.round((detratores / totalNps) * 100) : 0,
-      },
-      ativacao: {
-        ativaram,
-        naoAtivaram,
-        total: totalQ1,
-        pctAtivaram: totalQ1 ? Math.round((ativaram / totalQ1) * 100) : 0,
-      },
-      motivosNaoAtivacao: q1bRows.rows.map(r => ({
-        value: r.responsevalue,
-        label: r.optiontext || r.responsevalue,
-        count: Number(r.count),
-        pct: naoAtivaram > 0 ? Math.round((Number(r.count) / naoAtivaram) * 100) : 0,
-      })),
-      conectividade: q3Rows.rows.map(r => ({
-        value: r.responsevalue,
-        label: r.optiontext || r.responsevalue,
-        count: Number(r.count),
-        pct: ativaram > 0 ? Math.round((Number(r.count) / ativaram) * 100) : 0,
-      })),
-      motivacaoNivel: q4Rows.rows.map(r => ({
-        value: r.responsevalue,
-        count: Number(r.count),
-        pct: ativaram > 0 ? Math.round((Number(r.count) / ativaram) * 100) : 0,
-      })),
-    });
+      const ativaram = Number((q1Data.find(r => r.responsevalue === 'op1') || {}).count || 0);
+      const naoAtivaram = Number((q1Data.find(r => r.responsevalue === 'op2') || {}).count || 0);
+      const totalQ1 = ativaram + naoAtivaram;
+
+      res.json({
+        totalRespostas: Number(overview[0].total),
+        ultimaAtualizacao: overview[0].ultima_atualizacao,
+        ativacao: {
+          ativaram,
+          naoAtivaram,
+          total: totalQ1,
+          pctAtivaram: totalQ1 ? Math.round((ativaram / totalQ1) * 100) : 0,
+          opcoes: q1Data.map(r => ({
+            value: r.responsevalue,
+            label: r.optiontext || r.responsevalue,
+            count: Number(r.count),
+            pct: totalQ1 ? Math.round((Number(r.count) / totalQ1) * 100) : 0,
+          })),
+        },
+        nps: {
+          score: npsScore,
+          promotores,
+          neutros,
+          detratores,
+          total: totalNps,
+          pctPromo:    totalNps ? Math.round((promotores / totalNps) * 100) : 0,
+          pctNeutro:   totalNps ? Math.round((neutros    / totalNps) * 100) : 0,
+          pctDetrator: totalNps ? Math.round((detratores / totalNps) * 100) : 0,
+        },
+        motivosNaoAtivacao: q1bData.map(r => ({
+          value: r.responsevalue,
+          label: r.optiontext || r.responsevalue,
+          count: Number(r.count),
+          pct: naoAtivaram > 0 ? Math.round((Number(r.count) / naoAtivaram) * 100) : 0,
+        })),
+        conectividade: q3Data.map(r => ({
+          value: r.responsevalue,
+          label: r.optiontext || r.responsevalue,
+          count: Number(r.count),
+          pct: ativaram > 0 ? Math.round((Number(r.count) / ativaram) * 100) : 0,
+        })),
+        motivacaoNivel: q4Data.map(r => ({
+          value: r.responsevalue,
+          label: r.optiontext || r.responsevalue,
+          count: Number(r.count),
+          pct: ativaram > 0 ? Math.round((Number(r.count) / ativaram) * 100) : 0,
+        })),
+        comentarios: comentarios.map(r => ({
+          texto: r.texto,
+          npsScore: r.nps_score != null ? Number(r.nps_score) : null,
+        })),
+      });
+    } finally {
+      conn.release();
+    }
   } catch (err) {
     console.error('NPS Meli error:', err);
     res.status(500).json({ error: err.message });

@@ -7,7 +7,6 @@
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="meli.css">
   <link rel="stylesheet" href="nps-meli.css">
-  <link rel="stylesheet" href="refresh.css">
 </head>
 <body>
   <div class="sidebar">
@@ -69,100 +68,129 @@
     <header class="page-header">
       <h1>Pesquisa NPS</h1>
       <span class="meli-badge">MELI26</span>
-      <div id="refreshContainer"></div>
     </header>
 
     <div id="loading" class="loading">Carregando dados...</div>
 
     <div id="page" class="hidden">
 
-      <!-- KPIs principais -->
+      <!-- 1. Cobertura -->
       <section class="cards-row">
-        <div class="card nps-score-card" id="npsScoreCard">
-          <span class="card-label">NPS Score</span>
-          <span class="card-value nps-score-value" id="npsScore">-</span>
-          <span class="card-sub" id="npsTotal">- respostas</span>
-        </div>
-        <div class="card accent-green">
-          <span class="card-label">Promotores (9-10)</span>
-          <span class="card-value" id="npsPromo">-</span>
-          <span class="card-sub" id="npsPromoPct"></span>
-        </div>
-        <div class="card" style="border-top:3px solid var(--orange)">
-          <span class="card-label">Neutros (7-8)</span>
-          <span class="card-value" style="color:var(--orange)" id="npsNeutro">-</span>
-          <span class="card-sub" id="npsNeutroPct"></span>
-        </div>
-        <div class="card accent-red">
-          <span class="card-label">Detratores (0-6)</span>
-          <span class="card-value" id="npsDetrator">-</span>
-          <span class="card-sub" id="npsDetratPct"></span>
-        </div>
         <div class="card accent-blue">
-          <span class="card-label">Ativaram o chip</span>
-          <span class="card-value" id="ativaram">-</span>
-          <span class="card-sub" id="ativaramPct"></span>
-        </div>
-        <div class="card">
           <span class="card-label">Total de Respostas</span>
           <span class="card-value" id="totalRespostas">-</span>
           <span class="card-sub" id="ultimaAtualizacao"></span>
+          <span class="card-sub nps-n-warning hidden" id="nWarning">N baixo — interpretar com cautela</span>
+        </div>
+        <div class="card accent-green">
+          <span class="card-label">Ativaram o Chip</span>
+          <span class="card-value" id="pctAtivaram">-</span>
+          <span class="card-sub" id="ativaramSub"></span>
+        </div>
+        <div class="card nps-score-card" id="npsScoreCard">
+          <span class="card-label">NPS Score</span>
+          <span class="card-value nps-score-value" id="npsScore">-</span>
+          <span class="card-sub" id="npsScoreSub"></span>
         </div>
       </section>
 
-      <!-- Barra de distribuicao NPS -->
-      <section class="cards-row">
-        <div class="card" style="flex:1">
-          <span class="card-label">Distribuicao NPS</span>
-          <div class="nps-bar-container" id="npsBar">
-            <div class="nps-bar-seg nps-seg-detrator" id="npsBarDetrator"></div>
-            <div class="nps-bar-seg nps-seg-neutro" id="npsBarNeutro"></div>
-            <div class="nps-bar-seg nps-seg-promo" id="npsBarPromo"></div>
+      <!-- 2. Ativacao + Motivos lado a lado -->
+      <section class="nps-section" id="ativacaoSection">
+        <div class="nps-col">
+          <div class="nps-section-header">
+            <h2>Taxa de ativação</h2>
+            <p class="nps-question-text">"Você conseguiu ativar seu chip TaOn?"</p>
           </div>
-          <div class="nps-bar-legend">
-            <span><span class="nps-dot nps-dot-detrator"></span> Detratores <b id="npsLegDetrator">-</b></span>
-            <span><span class="nps-dot nps-dot-neutro"></span> Neutros <b id="npsLegNeutro">-</b></span>
-            <span><span class="nps-dot nps-dot-promo"></span> Promotores <b id="npsLegPromo">-</b></span>
+          <div class="card">
+            <div class="nps-h-bars" id="ativacaoBars"></div>
+          </div>
+        </div>
+        <div class="nps-col hidden" id="motivosWrapper">
+          <div class="nps-section-header">
+            <h2>Motivos de não ativação</h2>
+            <p class="nps-question-text">"O que aconteceu?" — <span id="motivosBase"></span> não ativaram</p>
+          </div>
+          <div class="card">
+            <div class="nps-h-bars" id="motivosBars"></div>
           </div>
         </div>
       </section>
 
-      <!-- Ativacao do chip -->
-      <section class="cards-row">
-        <div class="card" style="flex:1">
-          <span class="card-label">Ativacao do Chip (Q1)</span>
-          <div class="nps-h-bars" id="ativacaoBars"></div>
+      <!-- 3. NPS -->
+      <section class="nps-section">
+        <div class="nps-section-header">
+          <h2>Como os entregadores avaliam o TaOn?</h2>
+          <p class="nps-question-text">"De 0 a 10, o quanto você recomendaria o chip TaOn para outro entregador do Mercado Livre?"</p>
+          <p class="nps-scope-note" id="npsScope"></p>
         </div>
+
+        <div class="cards-row">
+          <div class="card accent-green">
+            <span class="card-label">Promotores (9-10)</span>
+            <span class="card-value" id="npsPromo">-</span>
+            <span class="card-sub" id="npsPromoPct"></span>
+          </div>
+          <div class="card nps-neutro-card">
+            <span class="card-label">Neutros (7-8)</span>
+            <span class="card-value" id="npsNeutro">-</span>
+            <span class="card-sub" id="npsNeutroPct"></span>
+          </div>
+          <div class="card accent-red">
+            <span class="card-label">Detratores (0-6)</span>
+            <span class="card-value" id="npsDetrator">-</span>
+            <span class="card-sub" id="npsDetratPct"></span>
+          </div>
+        </div>
+
+        <div class="nps-bar-container" id="npsBar">
+          <div class="nps-bar-seg nps-seg-promo" id="npsBarPromo"></div>
+          <div class="nps-bar-seg nps-seg-neutro" id="npsBarNeutro"></div>
+          <div class="nps-bar-seg nps-seg-detrator" id="npsBarDetrator"></div>
+        </div>
+        <div class="nps-bar-legend">
+          <span><span class="nps-dot nps-dot-promo"></span> Promotores <b id="npsLegPromo">-</b></span>
+          <span><span class="nps-dot nps-dot-neutro"></span> Neutros <b id="npsLegNeutro">-</b></span>
+          <span><span class="nps-dot nps-dot-detrator"></span> Detratores <b id="npsLegDetrator">-</b></span>
+        </div>
+
       </section>
 
-      <!-- Motivos de nao ativacao -->
-      <section class="cards-row" id="motivosSection">
-        <div class="card" style="flex:1">
-          <span class="card-label">Motivos de Nao Ativacao (Q1b)</span>
-          <div class="nps-h-bars" id="motivosBars"></div>
+      <!-- 4. Impacto na conectividade -->
+      <section class="nps-section">
+        <div class="nps-section-header">
+          <h2>O chip melhorou a conexão durante as entregas?</h2>
+          <p class="nps-scope-note" id="conectividadeScope"></p>
         </div>
-      </section>
-
-      <!-- Impacto na conectividade -->
-      <section class="cards-row">
-        <div class="card" style="flex:1">
-          <span class="card-label">Impacto na Conectividade (Q3)</span>
+        <div class="card">
           <div class="nps-h-bars" id="conectividadeBars"></div>
         </div>
       </section>
 
-      <!-- Motivacao para manter nivel -->
-      <section class="cards-row">
-        <div class="card" style="flex:1">
-          <span class="card-label">Motivacao para Manter Nivel (Q4) — 1 a 5</span>
+      <!-- 5. Motivacao para manter nivel -->
+      <section class="nps-section">
+        <div class="nps-section-header">
+          <h2>Retenção no Programa de Incentivo</h2>
+          <p class="nps-question-text">"O benefício do chip te motivou a manter seu nível no Programa de Incentivo?"</p>
+          <p class="nps-scope-note" id="motivacaoScope"></p>
+        </div>
+        <div class="card">
           <div class="nps-h-bars" id="motivacaoBars"></div>
         </div>
       </section>
 
+      <!-- 6. Comentarios livres -->
+      <section class="nps-section" id="comentariosSection">
+        <div class="nps-section-header">
+          <h2>O que os entregadores disseram?</h2>
+          <p class="nps-question-text">"Algum comentário?" — <span id="comentariosTotal"></span> responderam</p>
+        </div>
+        <div class="nps-comentarios" id="comentariosGrid"></div>
+      </section>
+
+
     </div>
   </main>
 
-  <script src="refresh.js"></script>
   <script src="nps-meli.js"></script>
 </body>
 </html>

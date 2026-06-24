@@ -1,12 +1,63 @@
 /* NPS Score card */
-.nps-score-card { border-top: 3px solid var(--blue); }
+.nps-score-card { border-top: 3px solid var(--orange); }
 .nps-score-card.score-positive { border-top-color: var(--green); }
 .nps-score-card.score-negative { border-top-color: #ef4444; }
 
 .nps-score-value { font-size: 40px !important; font-weight: 700; }
 .nps-score-card.score-positive .nps-score-value { color: var(--green); }
 .nps-score-card.score-negative .nps-score-value { color: #ef4444; }
-.nps-score-card.score-neutral .nps-score-value { color: var(--orange); }
+.nps-score-card.score-neutral  .nps-score-value { color: var(--orange); }
+
+.nps-neutro-card { border-top: 3px solid var(--orange); }
+.nps-neutro-card .card-value { color: var(--orange); }
+
+/* Section layout */
+.nps-section {
+  margin-bottom: 32px;
+}
+
+.nps-section-header {
+  margin-bottom: 12px;
+}
+
+.nps-section-header h2 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 4px;
+}
+
+.nps-question-text {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-style: italic;
+  margin: 0 0 4px;
+}
+
+.nps-scope-note {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+/* Sub-secao motivos (indentada) */
+.nps-subsection {
+  margin-top: 16px;
+  margin-left: 20px;
+  padding-left: 16px;
+  border-left: 2px solid var(--border);
+}
+
+.nps-subsection-header {
+  margin-bottom: 10px;
+}
+
+.nps-subsection-header h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 2px;
+}
 
 /* Distribuicao NPS bar */
 .nps-bar-container {
@@ -53,57 +104,126 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  margin-top: 16px;
 }
 
 .nps-h-bar-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 220px 1fr 44px 40px;
   align-items: center;
   gap: 10px;
   font-size: 13px;
 }
 
-.nps-h-bar-label {
-  width: 220px;
-  flex-shrink: 0;
+.nps-h-label {
   color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.nps-h-bar-track {
-  flex: 1;
+.nps-h-track {
   height: 10px;
   background: var(--border);
   border-radius: 5px;
   overflow: hidden;
 }
 
-.nps-h-bar-fill {
+.nps-h-fill {
   height: 100%;
   border-radius: 5px;
-  background: var(--blue);
   transition: width 0.4s ease;
+  background: var(--blue);
 }
 
-.nps-h-bar-fill.green  { background: var(--green); }
-.nps-h-bar-fill.orange { background: var(--orange); }
-.nps-h-bar-fill.red    { background: #ef4444; }
-.nps-h-bar-fill.purple { background: var(--purple); }
+.nps-h-fill.fill-green  { background: var(--green); }
+.nps-h-fill.fill-teal   { background: #0d9488; }
+.nps-h-fill.fill-orange { background: var(--orange); }
+.nps-h-fill.fill-red    { background: #ef4444; }
+.nps-h-fill.fill-gray   { background: #64748b; }
 
-.nps-h-bar-pct {
-  width: 40px;
+.nps-h-pct {
   text-align: right;
   color: var(--text);
   font-weight: 600;
-  flex-shrink: 0;
 }
 
-.nps-h-bar-count {
-  width: 30px;
+.nps-h-count {
   text-align: right;
   color: var(--text-muted);
   font-size: 12px;
+}
+
+/* Duas colunas lado a lado */
+.nps-two-col-section {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.nps-col {
+  min-width: 0;
+}
+
+/* Comentarios livres — lista inline */
+.nps-comentarios {
+  display: flex;
+  flex-direction: column;
+}
+
+.nps-comment-line {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.nps-comment-line:last-child {
+  border-bottom: none;
+}
+
+.nps-comment-line.line-detrator { border-left: 3px solid #ef4444; padding-left: 12px; }
+.nps-comment-line.line-neutro   { border-left: 3px solid var(--orange); padding-left: 12px; }
+
+.nps-comment-tag {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 10px;
+  white-space: nowrap;
   flex-shrink: 0;
+}
+
+.tag-detrator { background: #ef4444; color: #fff; }
+.tag-neutro   { background: var(--orange); color: #fff; }
+
+.nps-comment-text {
+  color: var(--text-muted);
+}
+
+/* accent-red (detratores) */
+.accent-red { border-top: 3px solid #ef4444; }
+.accent-red .card-value { color: #ef4444; }
+
+/* N baixo warning */
+.nps-n-warning {
+  color: var(--orange) !important;
+  font-weight: 600;
+}
+
+/* hidden utility */
+.hidden { display: none !important; }
+
+@media (max-width: 700px) {
+  .nps-h-bar-row {
+    grid-template-columns: 140px 1fr 36px 32px;
+    font-size: 12px;
+  }
+  .nps-two-col-section {
+    grid-template-columns: 1fr;
+  }
 }
