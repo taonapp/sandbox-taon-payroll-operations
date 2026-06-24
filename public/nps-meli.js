@@ -45,7 +45,7 @@ function motivacaoColor(value) {
 
 async function load() {
   try {
-    const res = await fetch('/api/nps-meli');
+    const res = await fetch('/payroll-ops/api/nps-meli');
     if (!res.ok) throw new Error(await res.text());
     const d = await res.json();
 
