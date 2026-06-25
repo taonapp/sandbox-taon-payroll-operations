@@ -197,12 +197,16 @@ apiRouter.get('/api/dashboard', async (req, res) => {
 apiRouter.get('/api/users/payers', async (req, res) => {
   try {
     const view = req.query.view || 'cobranca';
+    const op = resolvePayrollOp(req.query.op);
+    if (!op) return res.status(400).json({ error: 'Parâmetro op inválido (parceiro payroll)' });
     const cutoffFilter = view === 'cobranca'
-      ? "AND u.cdate < DATE_ADD(DATE_FORMAT(CURDATE(), '%Y-%m-20'), INTERVAL 1 DAY)"
+      ? `AND u.cdate < DATE_ADD(DATE_FORMAT(CURDATE(), '%Y-%m-${String(op.cutoffDay).padStart(2, '0')}'), INTERVAL 1 DAY)`
       : '';
+    const { sql: opUsersSql, binds: opBinds } = opUsersCte(op);
 
-    const [rows] = await pool.query(`
-      WITH base_payroll AS (
+    const sql = `
+      WITH ${opUsersSql},
+      base_payroll AS (
           SELECT DISTINCT rpc.idUser
           FROM RecurringPurchasesConfig rpc
           LEFT JOIN Users u ON u.id = rpc.idUser
@@ -212,7 +216,14 @@ apiRouter.get('/api/users/payers', async (req, res) => {
             AND u.status = 'enabled'
             AND u.internalUser = 0
             AND p.\`type\` = 'main'
+            AND rpc.idUser IN (SELECT idUser FROM op_users)
             ${cutoffFilter}
+      ),
+      chip_assoc AS (
+          SELECT h.idUser AS idUser, MIN(h.vdate) AS assocDate
+          FROM SimCards FOR SYSTEM_TIME ALL h
+          WHERE h.idUser IN (SELECT idUser FROM base_payroll)
+          GROUP BY h.idUser
       ),
       recurring_main AS (
           SELECT *
@@ -291,25 +302,18 @@ apiRouter.get('/api/users/payers', async (req, res) => {
       base_final AS (
           SELECT
               rm.idUserPayer,
+              -- Folha: gordurinha não se aplica — todo titular é cobrado (pro-rata pela associação do chip).
+              1 AS dentroCobranca,
               CASE
-                  WHEN u.idUserParent IS NOT NULL THEN 1
-                  WHEN mde.maxDateEnd IS NULL THEN 1
-                  WHEN mde.maxDateEnd <= TIMESTAMP(
-                      DATE_FORMAT(DATE_ADD(CURDATE(), INTERVAL 1 MONTH), '%Y-%m-07'),
-                      '03:00:00'
-                  ) THEN 1
-                  ELSE 0
-              END AS dentroCobranca,
-              CASE
-                  WHEN fp.dateStart IS NULL THEN rm.amount
+                  WHEN ca.assocDate IS NULL THEN rm.amount
                   WHEN
-                      DATEDIFF(pa.proximo_dia_7, DATE(fp.dateStart)) + 1
+                      DATEDIFF(pa.proximo_dia_7, DATE(ca.assocDate)) + 1
                       >= DATEDIFF(pa.proximo_dia_7, pa.dia_7_anterior)
                   THEN rm.amount
                   ELSE
                       ROUND(
                           rm.amount
-                          * (DATEDIFF(pa.proximo_dia_7, DATE(fp.dateStart)) + 1)
+                          * (DATEDIFF(pa.proximo_dia_7, DATE(ca.assocDate)) + 1)
                           / NULLIF(DATEDIFF(pa.proximo_dia_7, pa.dia_7_anterior), 0),
                           2
                       )
@@ -317,8 +321,7 @@ apiRouter.get('/api/users/payers', async (req, res) => {
           FROM base_payroll b
           LEFT JOIN Users u ON u.id = b.idUser
           LEFT JOIN recurring_main rm ON rm.idUser = b.idUser
-          LEFT JOIN first_purchase fp ON fp.idUser = b.idUser
-          LEFT JOIN max_date_end mde ON mde.idUser = b.idUser
+          LEFT JOIN chip_assoc ca ON ca.idUser = b.idUser
           CROSS JOIN periodo_atual pa
           WHERE u.internalUser = 0
             AND u.status = 'enabled'
@@ -340,7 +343,13 @@ apiRouter.get('/api/users/payers', async (req, res) => {
       LEFT JOIN Users u ON u.id = bf.idUserPayer
       GROUP BY bf.idUserPayer
       ORDER BY SUM(bf.dentroCobranca) DESC
-    `);
+    `;
+
+    if (req.query.sql === '1') {
+      return res.json({ sql: pool.format(sql, opBinds) });
+    }
+
+    const [rows] = await pool.query(sql, opBinds);
 
     res.json(rows);
   } catch (err) {
@@ -352,8 +361,13 @@ apiRouter.get('/api/users/payers', async (req, res) => {
 // Exportar cobrança do mês como XLSX (mesmo formato da planilha manual)
 apiRouter.get('/api/users/payers/export', async (req, res) => {
   try {
+    const op = resolvePayrollOp(req.query.op);
+    if (!op) return res.status(400).json({ error: 'Parâmetro op inválido (parceiro payroll)' });
+    const { sql: opUsersSql, binds: opBinds } = opUsersCte(op);
+
     const [rows] = await pool.query(`
-      WITH base_payroll AS (
+      WITH ${opUsersSql},
+      base_payroll AS (
           SELECT DISTINCT rpc.idUser
           FROM RecurringPurchasesConfig rpc
           LEFT JOIN Users u ON u.id = rpc.idUser
@@ -363,7 +377,14 @@ apiRouter.get('/api/users/payers/export', async (req, res) => {
             AND u.status = 'enabled'
             AND u.internalUser = 0
             AND p.\`type\` = 'main'
-            AND u.cdate < DATE_ADD(DATE_FORMAT(CURDATE(), '%Y-%m-20'), INTERVAL 1 DAY)
+            AND rpc.idUser IN (SELECT idUser FROM op_users)
+            AND u.cdate < DATE_ADD(DATE_FORMAT(CURDATE(), '%Y-%m-${String(op.cutoffDay).padStart(2, '0')}'), INTERVAL 1 DAY)
+      ),
+      chip_assoc AS (
+          SELECT h.idUser AS idUser, MIN(h.vdate) AS assocDate
+          FROM SimCards FOR SYSTEM_TIME ALL h
+          WHERE h.idUser IN (SELECT idUser FROM base_payroll)
+          GROUP BY h.idUser
       ),
       recurring_main AS (
           SELECT *
@@ -442,16 +463,17 @@ apiRouter.get('/api/users/payers/export', async (req, res) => {
       base_final AS (
           SELECT
               rm.idUserPayer,
+              -- Folha: gordurinha não se aplica — pro-rata pela associação do chip.
               CASE
-                  WHEN fp.dateStart IS NULL THEN rm.amount
+                  WHEN ca.assocDate IS NULL THEN rm.amount
                   WHEN
-                      DATEDIFF(pa.proximo_dia_7, DATE(fp.dateStart)) + 1
+                      DATEDIFF(pa.proximo_dia_7, DATE(ca.assocDate)) + 1
                       >= DATEDIFF(pa.proximo_dia_7, pa.dia_7_anterior)
                   THEN rm.amount
                   ELSE
                       ROUND(
                           rm.amount
-                          * (DATEDIFF(pa.proximo_dia_7, DATE(fp.dateStart)) + 1)
+                          * (DATEDIFF(pa.proximo_dia_7, DATE(ca.assocDate)) + 1)
                           / NULLIF(DATEDIFF(pa.proximo_dia_7, pa.dia_7_anterior), 0),
                           2
                       )
@@ -459,21 +481,10 @@ apiRouter.get('/api/users/payers/export', async (req, res) => {
           FROM base_payroll b
           LEFT JOIN Users u ON u.id = b.idUser
           LEFT JOIN recurring_main rm ON rm.idUser = b.idUser
-          LEFT JOIN first_purchase fp ON fp.idUser = b.idUser
-          LEFT JOIN max_date_end mde ON mde.idUser = b.idUser
+          LEFT JOIN chip_assoc ca ON ca.idUser = b.idUser
           CROSS JOIN periodo_atual pa
           WHERE u.internalUser = 0
             AND u.status = 'enabled'
-            AND (
-                  u.idUserParent IS NOT NULL
-                  OR (
-                      u.idUserParent IS NULL
-                      AND (mde.maxDateEnd IS NULL OR mde.maxDateEnd <= TIMESTAMP(
-                          DATE_FORMAT(DATE_ADD(CURDATE(), INTERVAL 1 MONTH), '%Y-%m-07'),
-                          '03:00:00'
-                      ))
-                  )
-                )
             AND EXISTS (
                   SELECT 1
                   FROM SimCards sc
@@ -489,7 +500,7 @@ apiRouter.get('/api/users/payers/export', async (req, res) => {
       LEFT JOIN Users u ON u.id = bf.idUserPayer
       GROUP BY bf.idUserPayer
       ORDER BY u.name ASC
-    `);
+    `, opBinds);
 
     // Build XLSX matching the manual spreadsheet format
     const now = new Date();
@@ -549,7 +560,7 @@ apiRouter.get('/api/users', async (req, res) => {
       ? ''
       : "AND u.cdate < DATE_ADD(DATE_FORMAT(CURDATE(), '%Y-%m-20'), INTERVAL 1 DAY)";
 
-    const [rows] = await pool.query(`
+    const sql = `
       WITH base_payroll AS (
           SELECT DISTINCT rpc.idUser
           FROM RecurringPurchasesConfig rpc
@@ -729,7 +740,13 @@ apiRouter.get('/api/users', async (req, res) => {
                 AND sc.idStatus NOT IN (22,3,18,8,9,14)
             )`}
       ORDER BY u.cdate DESC
-    `);
+    `;
+
+    if (req.query.sql === '1') {
+      return res.json({ sql });
+    }
+
+    const [rows] = await pool.query(sql);
 
     res.json(rows);
   } catch (err) {
@@ -741,9 +758,236 @@ apiRouter.get('/api/users', async (req, res) => {
 // Operações — dashboard por código de ativação
 const OPERATIONS = {
   meli: { codes: ['MELI26'], label: 'Meli' },
-  hagana: { codes: ['HAGANADFGERAL', 'HAGANADF'], label: 'Haganá' },
-  aster: { codes: ['ASTERDF'], label: 'Aster' },
+  hagana: { codes: ['HAGANADFGERAL', 'HAGANADF'], label: 'Haganá', payroll: true, cutoffDay: 20, originLike: 'HAGANA%' },
+  aster: { codes: ['ASTERDF'], label: 'Aster', payroll: true, cutoffDay: 24, originLike: 'ASTER%' },
 };
+
+// Resolve/valida o parceiro payroll vindo do query param (default: hagana)
+function resolvePayrollOp(opKey) {
+  const op = OPERATIONS[opKey || 'hagana'];
+  if (!op || !op.payroll) return null;
+  return op;
+}
+
+// CTE op_users (titulares via MgmChain + dependentes via idUserParent) — mesmo padrão de /api/operations/summary
+function opUsersCte(op) {
+  const ph = op.codes.map(() => '?').join(',');
+  const sql = `op_users AS (
+      SELECT DISTINCT mc.idUser FROM MgmChain mc
+      WHERE mc.mgmInvCode IN (${ph}) AND mc.nivel = 1
+      UNION
+      SELECT u.id FROM Users u
+      INNER JOIN MgmChain mc ON mc.idUser = u.idUserParent AND mc.nivel = 1
+      WHERE mc.mgmInvCode IN (${ph}) AND u.internalUser = 0
+  )`;
+  return { sql, binds: [...op.codes, ...op.codes] };
+}
+
+// ===== Sanity check por parceiro =====
+// Códigos/originLike vêm da config (confiáveis) → inlinados via pool.escape (binds vazios, "Ver SQL" já resolvido).
+function sanityMemberCtes(op) {
+  const inList = op.codes.map(c => pool.escape(c)).join(',');
+  const like = pool.escape(op.originLike);
+  return `
+  op_members AS (
+    SELECT DISTINCT mc.idUser FROM MgmChain mc WHERE mc.mgmInvCode IN (${inList}) AND mc.nivel = 1
+    UNION
+    SELECT u.id FROM Users u INNER JOIN MgmChain mc ON mc.idUser = u.idUserParent AND mc.nivel = 1
+      WHERE mc.mgmInvCode IN (${inList}) AND u.internalUser = 0
+  ),
+  official_members AS (
+    SELECT DISTINCT mc.idUser FROM MgmChain mc WHERE mc.mgmInvCode IN (${inList})
+    UNION
+    SELECT u.id FROM Users u INNER JOIN MgmChain mc ON mc.idUser = u.idUserParent
+      WHERE mc.mgmInvCode IN (${inList}) AND u.internalUser = 0
+  ),
+  origin_members AS (
+    SELECT DISTINCT mc.idUser FROM MgmChain mc WHERE mc.mgmInvCode LIKE ${like}
+    UNION
+    SELECT u.id FROM Users u INNER JOIN MgmChain mc ON mc.idUser = u.idUserParent
+      WHERE mc.mgmInvCode LIKE ${like} AND u.internalUser = 0
+  )`;
+}
+
+// Predicados (alias do usuário-alvo = t)
+const SC_CHIP = `EXISTS (SELECT 1 FROM SimCards sc WHERE sc.idUser = t.id AND sc.idStatus NOT IN (22,3,18,8,9,14))`;
+const SC_PAY  = `EXISTS (SELECT 1 FROM RecurringPurchasesConfig r WHERE r.idUser = t.id AND r.paymentMethod = 'payroll' AND r.idStatus = 1)`;
+const SC_DEMI = `EXISTS (SELECT 1 FROM RecurringPurchasesConfig r WHERE r.idUser = t.id AND r.idReason = 4)`;
+const SC_ACTNONPAY = `EXISTS (SELECT 1 FROM RecurringPurchasesConfig r WHERE r.idUser = t.id AND r.paymentMethod <> 'payroll' AND r.idStatus = 1)`;
+const SC_ANYCFG = `EXISTS (SELECT 1 FROM RecurringPurchasesConfig r WHERE r.idUser = t.id)`;
+const SC_HADPAY = `EXISTS (SELECT 1 FROM RecurringPurchasesConfig r WHERE r.idUser = t.id AND r.paymentMethod = 'payroll')`;
+
+// Colunas ricas comuns do usuário
+const SC_COLS = `
+  t.id AS idUser,
+  t.name AS nome,
+  t.cpf,
+  CASE WHEN t.idUserParent IS NULL THEN 'titular' ELSE 'dependente' END AS tipo,
+  (SELECT GROUP_CONCAT(DISTINCT CONCAT(mc.mgmInvCode,' (n',mc.nivel,')') ORDER BY mc.nivel SEPARATOR ', ')
+     FROM MgmChain mc WHERE mc.idUser = t.id) AS codigos,
+  (SELECT um.value FROM UsersMetadata um WHERE um.idUser = t.id AND um.name = 'typeFlow' LIMIT 1) AS typeFlow,
+  (SELECT um.value FROM UsersMetadata um WHERE um.idUser = t.id AND um.name = 'tag' LIMIT 1) AS tag,
+  (SELECT GROUP_CONCAT(DISTINCT CONCAT(st.name,'(',sc.idStatus,')') SEPARATOR ', ')
+     FROM SimCards sc LEFT JOIN SimCardStatus st ON st.id = sc.idStatus WHERE sc.idUser = t.id) AS chips,
+  (SELECT GROUP_CONCAT(DISTINCT CONCAT(r.paymentMethod,'/',rs.name) SEPARATOR ', ')
+     FROM RecurringPurchasesConfig r LEFT JOIN RecurringPurchasesConfigStatus rs ON rs.id = r.idStatus
+     WHERE r.idUser = t.id) AS rpc_resumo,
+  DATE_FORMAT(t.cdate,'%Y-%m-%d') AS cdate`;
+
+const SANITY_CHECKS = [
+  {
+    key: 'gap_atribuicao',
+    label: 'Gap de atribuição',
+    severity: 'alta',
+    explain: 'Usuários payroll que pertencem ao parceiro (têm o código oficial em nível >1 por indicação MGM, ou variante de campanha) mas o export NÃO inclui, porque ele só filtra pelo código no nível 1. São cobranças que deveriam sair e estão ficando de fora.',
+    build: (op) => ({ sql: `
+WITH ${sanityMemberCtes(op)}
+SELECT ${SC_COLS},
+  CASE WHEN EXISTS (SELECT 1 FROM MgmChain mc WHERE mc.idUser = t.id AND mc.mgmInvCode IN (${op.codes.map(c => pool.escape(c)).join(',')}))
+       THEN 'código oficial em nível >1 (indicação MGM)'
+       ELSE 'variante de campanha (sem código oficial)' END AS motivo
+FROM Users t
+INNER JOIN origin_members om ON om.idUser = t.id
+WHERE t.status = 'enabled' AND t.internalUser = 0
+  AND ${SC_PAY}
+  AND t.id NOT IN (SELECT idUser FROM op_members)
+ORDER BY t.cdate DESC` }),
+  },
+  {
+    key: 'sem_rpc',
+    label: 'Sem RPC (possível bug)',
+    severity: 'alta',
+    explain: 'Entraram pela parceria e têm chip cobrável ativo, mas NÃO têm RPC payroll ativo e NÃO estão marcados como demitidos nem pagando por outro método. Suspeitos de terem caído fora da fonte da verdade por bug (titular sem nenhuma config; dependente sem config = chip extra possivelmente não cobrado).',
+    build: (op) => ({ sql: `
+WITH ${sanityMemberCtes(op)}
+SELECT ${SC_COLS},
+  CASE WHEN NOT ${SC_ANYCFG} THEN 'sem nenhuma config (chip ativo, zero RPC)'
+       WHEN ${SC_HADPAY} THEN 'payroll inativado sem demissão'
+       ELSE 'config inativa não-payroll' END AS situacao
+FROM Users t
+INNER JOIN official_members om ON om.idUser = t.id
+WHERE t.status = 'enabled' AND t.internalUser = 0
+  AND ${SC_CHIP} AND NOT ${SC_PAY} AND NOT ${SC_DEMI} AND NOT ${SC_ACTNONPAY}
+ORDER BY t.cdate DESC` }),
+  },
+  {
+    key: 'sem_chip',
+    label: 'Payroll sem chip cobrável',
+    severity: 'media',
+    explain: 'Usuários payroll do parceiro (pela regra do export) que são excluídos da cobrança porque não têm nenhum chip em status cobrável. Em geral legítimo (recém-cadastrado aguardando ativação, ou chip cancelado/em transferência), mas vale monitorar.',
+    build: (op) => ({ sql: `
+WITH ${sanityMemberCtes(op)}
+SELECT ${SC_COLS}
+FROM Users t
+INNER JOIN op_members om ON om.idUser = t.id
+WHERE t.status = 'enabled' AND t.internalUser = 0
+  AND ${SC_PAY} AND NOT ${SC_CHIP}
+ORDER BY t.cdate DESC` }),
+  },
+  {
+    key: 'demitidos',
+    label: 'Demitidos (saída legítima)',
+    severity: 'info',
+    explain: 'Entraram pela parceria, têm chip cobrável e sem RPC payroll ativo, mas têm ao menos uma linha com motivo Demitido (idReason=4). Não devem ser cobrados — listados para contraprova/auditoria.',
+    build: (op) => ({ sql: `
+WITH ${sanityMemberCtes(op)}
+SELECT ${SC_COLS}
+FROM Users t
+INNER JOIN official_members om ON om.idUser = t.id
+WHERE t.status = 'enabled' AND t.internalUser = 0
+  AND ${SC_CHIP} AND NOT ${SC_PAY} AND ${SC_DEMI}
+ORDER BY t.cdate DESC` }),
+  },
+  {
+    key: 'outro_metodo',
+    label: 'Pagam por outro método',
+    severity: 'info',
+    explain: 'Entraram pelo código da parceria mas têm config ATIVA por outro método de pagamento (pix/cartão), não folha. Não é problema — explica parte do funil de quem não está no payroll.',
+    build: (op) => ({ sql: `
+WITH ${sanityMemberCtes(op)}
+SELECT ${SC_COLS},
+  (SELECT GROUP_CONCAT(DISTINCT r.paymentMethod SEPARATOR ', ')
+     FROM RecurringPurchasesConfig r WHERE r.idUser = t.id AND r.idStatus = 1 AND r.paymentMethod <> 'payroll') AS metodo_ativo
+FROM Users t
+INNER JOIN official_members om ON om.idUser = t.id
+WHERE t.status = 'enabled' AND t.internalUser = 0
+  AND ${SC_CHIP} AND NOT ${SC_PAY} AND ${SC_ACTNONPAY}
+ORDER BY t.cdate DESC` }),
+  },
+];
+
+// Resumo: contagem de cada check para o parceiro
+apiRouter.get('/api/sanity/summary', async (req, res) => {
+  try {
+    const op = resolvePayrollOp(req.query.op);
+    if (!op) return res.status(400).json({ error: 'Parâmetro op inválido (parceiro payroll)' });
+
+    const out = [];
+    for (const check of SANITY_CHECKS) {
+      const { sql } = check.build(op);
+      const [rows] = await pool.query(`SELECT COUNT(*) AS total FROM (${sql}) c`);
+      out.push({ key: check.key, label: check.label, severity: check.severity, explain: check.explain, count: Number(rows[0].total) });
+    }
+    res.json(out);
+  } catch (err) {
+    console.error('Sanity summary error:', err);
+    res.status(500).json({ error: 'Erro ao consultar sanity summary' });
+  }
+});
+
+// Detalhe de um check (linhas) — com ?sql=1 retorna o SQL bruto resolvido
+apiRouter.get('/api/sanity/check', async (req, res) => {
+  try {
+    const op = resolvePayrollOp(req.query.op);
+    if (!op) return res.status(400).json({ error: 'Parâmetro op inválido (parceiro payroll)' });
+    const check = SANITY_CHECKS.find(c => c.key === req.query.key);
+    if (!check) return res.status(400).json({ error: 'Parâmetro key inválido' });
+
+    const { sql } = check.build(op);
+    if (req.query.sql === '1') {
+      return res.json({ sql });
+    }
+    const [rows] = await pool.query(sql);
+    res.json(rows);
+  } catch (err) {
+    console.error('Sanity check error:', err);
+    res.status(500).json({ error: 'Erro ao consultar sanity check' });
+  }
+});
+
+// Funil agregado para o Sankey (base = official_members do parceiro, enabled, não-interno)
+apiRouter.get('/api/sanity/funnel', async (req, res) => {
+  try {
+    const op = resolvePayrollOp(req.query.op);
+    if (!op) return res.status(400).json({ error: 'Parâmetro op inválido (parceiro payroll)' });
+
+    const [rows] = await pool.query(`
+      WITH ${sanityMemberCtes(op)}
+      SELECT
+        COUNT(*) AS total,
+        SUM(${SC_CHIP}) AS comChip,
+        SUM(NOT ${SC_CHIP}) AS semChip,
+        SUM(${SC_CHIP} AND ${SC_PAY}) AS folha,
+        SUM(${SC_CHIP} AND NOT ${SC_PAY} AND ${SC_ACTNONPAY}) AS outroMetodo,
+        SUM(${SC_CHIP} AND NOT ${SC_PAY} AND NOT ${SC_ACTNONPAY}) AS semRpc
+      FROM official_members om
+      INNER JOIN Users t ON t.id = om.idUser
+      WHERE t.status = 'enabled' AND t.internalUser = 0
+    `);
+    const r = rows[0] || {};
+    res.json({
+      total: Number(r.total) || 0,
+      comChip: Number(r.comChip) || 0,
+      semChip: Number(r.semChip) || 0,
+      folha: Number(r.folha) || 0,
+      outroMetodo: Number(r.outroMetodo) || 0,
+      semRpc: Number(r.semRpc) || 0,
+    });
+  } catch (err) {
+    console.error('Sanity funnel error:', err);
+    res.status(500).json({ error: 'Erro ao consultar funil' });
+  }
+});
 
 apiRouter.get('/api/operations/summary', async (req, res) => {
   try {
