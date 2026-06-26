@@ -94,8 +94,13 @@
         <button class="tab active" data-view="total">Base Total do Mes</button>
         <button class="tab" data-view="cobranca">Cobranca do Mes (corte dia 20)</button>
         <button class="tab" data-view="todos">Todos os Cadastrados</button>
+        <button class="tab" data-view="sanity">Sanity Check</button>
       </div>
-      <a class="export-btn hidden" id="exportXlsx" href="/payroll-ops/api/users/payers/export" download>Exportar XLSX</a>
+      <select class="filter-select" id="partnerSelect">
+        <option value="hagana">Haganá</option>
+        <option value="aster">Aster</option>
+      </select>
+      <a class="export-btn hidden" id="exportXlsx" href="/payroll-ops/api/users/payers/export?op=hagana" download>Exportar XLSX</a>
     </div>
 
     <div id="loading" class="loading">Carregando dados...</div>
@@ -105,7 +110,10 @@
       <section class="table-section" id="payersSection">
         <div class="card table-card">
           <div class="payers-header" id="payersToggle">
-            <span class="card-label" id="payersLabel">Cobranca por Pagador (base total)</span>
+            <div class="payers-header-left">
+              <span class="card-label" id="payersLabel">Cobranca por Pagador (base total)</span>
+              <button class="sql-btn" id="payersSqlBtn" type="button">Ver SQL</button>
+            </div>
             <span class="payers-toggle-icon" id="payersIcon">&#9660;</span>
           </div>
           <div id="payersContent">
@@ -116,6 +124,7 @@
                     <th>ID</th>
                     <th>Nome</th>
                     <th>CPF</th>
+                    <th id="payersRazaoTh" class="hidden">Razao Social</th>
                     <th>Valor Total Folha</th>
                     <th>Linhas Cobradas</th>
                     <th>Total Linhas Cobraveis</th>
@@ -130,6 +139,10 @@
       </section>
 
       <section class="table-section">
+        <div class="section-bar">
+          <span class="card-label">Base de Usuarios</span>
+          <button class="sql-btn" id="usersSqlBtn" type="button">Ver SQL</button>
+        </div>
         <div class="card table-card">
           <div class="table-scroll">
             <table class="data-table">
@@ -147,6 +160,7 @@
                   <th class="sortable" data-col="valorProporcional">Valor Proporcional</th>
                   <th class="sortable" data-col="maxDateEnd">maxDateEnd</th>
                   <th>Empresa</th>
+                  <th>Razao Social</th>
                   <th>SimCard</th>
                 </tr>
               </thead>
@@ -156,7 +170,28 @@
         </div>
       </section>
     </div>
+
+    <div id="sanityPanel" class="hidden">
+      <div class="sanity-intro">
+        Verificações de integridade da base do parceiro selecionado. Fonte da verdade: <b>RecurringPurchasesConfig</b> (payroll). Cada caso traz a explicação, a contagem, a query bruta ("Ver SQL") e a listagem completa ao expandir.
+      </div>
+      <div id="sanitySankey"></div>
+      <div id="sanityCards"></div>
+    </div>
   </main>
+
+  <div class="modal-overlay hidden" id="sqlModal">
+    <div class="modal modal-wide">
+      <div class="modal-header">
+        <h2 id="sqlModalTitle">Query SQL</h2>
+        <div class="modal-header-actions">
+          <button class="sql-btn" id="sqlCopyBtn" type="button">Copiar</button>
+          <button class="modal-close" id="sqlModalClose" type="button">&times;</button>
+        </div>
+      </div>
+      <div class="modal-body"><pre class="sql-view" id="sqlModalBody"></pre></div>
+    </div>
+  </div>
 
   <script src="refresh.js"></script>
   <script src="users.js"></script>
