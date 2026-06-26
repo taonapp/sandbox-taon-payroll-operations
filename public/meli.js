@@ -5,6 +5,10 @@ let currentFilter = 'all';
 let evoFilter = 'all';
 let searchTerm = '';
 let selectedRefDate = '';
+let waitlistLeads = [];
+let waitlistFilter = 'real';
+let waitlistSearch = '';
+let waitlistLoaded = false;
 
 function formatCurrency(n) {
   return Number(n || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -1050,12 +1054,16 @@ document.querySelectorAll('[data-tab]').forEach(btn => {
     $('tabAtivacao').classList.toggle('hidden', activeTab !== 'ativacao');
     $('tabMovimentos').classList.toggle('hidden', activeTab !== 'movimentos');
     $('tabEstoque').classList.toggle('hidden', activeTab !== 'estoque');
+    $('tabEspera').classList.toggle('hidden', activeTab !== 'espera');
 
     if (activeTab === 'estoque' && !stockLoaded) {
       loadStock();
     }
     if (activeTab === 'movimentos' && !movementsLoaded) {
       loadMovementsTab();
+    }
+    if (activeTab === 'espera' && !waitlistLoaded) {
+      loadWaitlist();
     }
   });
 });
@@ -1672,6 +1680,116 @@ $('stMonthNext').addEventListener('click', () => {
   stSelectedMonth = shiftMonth(stSelectedMonth, 1);
   $('stMonthLabel').textContent = formatMonthLabel(stSelectedMonth);
   renderStockTimeline();
+});
+
+// === LISTA DE ESPERA ===
+const weOrigemLabel = (o) =>
+  o === 'poc-meli-LP-esim' ? 'Landing (producao)'
+  : o === 'poc-meli-esim' ? 'Sandbox'
+  : (o || '-');
+
+async function loadWaitlist() {
+  $('weLoading').textContent = 'Carregando...';
+  $('weLoading').classList.remove('hidden');
+  try {
+    const res = await fetch('/payroll-ops/api/meli/waitlist');
+    if (!res.ok) throw new Error('API error');
+    waitlistLeads = await res.json();
+    waitlistLoaded = true;
+    $('weLoading').classList.add('hidden');
+    renderWaitlistKpis();
+    renderWaitlist();
+  } catch (err) {
+    $('weLoading').textContent = 'Erro ao carregar a lista de espera.';
+    console.error('Waitlist load error:', err);
+  }
+}
+
+function renderWaitlistKpis() {
+  const reais = waitlistLeads.filter(l => Number(l.isTeste) === 0);
+  const sum = (key) => reais.reduce((s, l) => s + Number(l[key] || 0), 0);
+  $('weTotal').textContent = reais.length;
+  $('weHoje').textContent = sum('isHoje');
+  $('weSete').textContent = sum('is7d');
+  $('weTrinta').textContent = sum('is30d');
+}
+
+function waitlistFiltered() {
+  const term = waitlistSearch.toLowerCase();
+  return waitlistLeads.filter(l => {
+    const teste = Number(l.isTeste) === 1;
+    if (waitlistFilter === 'real' && teste) return false;
+    if (waitlistFilter === 'teste' && !teste) return false;
+    if (term) {
+      const hay = (String(l.whatsapp || '') + ' ' + String(l.email || '')).toLowerCase();
+      if (!hay.includes(term)) return false;
+    }
+    return true;
+  });
+}
+
+function renderWaitlist() {
+  const tbody = $('weTableBody');
+  tbody.innerHTML = '';
+  const filtered = waitlistFiltered();
+  $('weResultCount').textContent = `${filtered.length} resultado${filtered.length !== 1 ? 's' : ''}`;
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted)">Nenhum inscrito encontrado</td></tr>';
+    return;
+  }
+
+  filtered.forEach(l => {
+    const teste = Number(l.isTeste) === 1;
+    const tipoBadge = teste
+      ? '<span class="pending-badge" style="background:var(--text-muted)">Teste</span>'
+      : '<span class="pending-badge" style="background:var(--green)">Real</span>';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${l.criadoEm || '-'}</td>
+      <td style="font-family:monospace">${l.whatsapp || '-'}</td>
+      <td style="font-family:monospace">${l.email || '-'}</td>
+      <td>${weOrigemLabel(l.origem)}</td>
+      <td>${tipoBadge}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+$('weSearch').addEventListener('input', (e) => {
+  waitlistSearch = e.target.value.trim();
+  renderWaitlist();
+});
+
+document.querySelectorAll('[data-we-filter]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('[data-we-filter]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    waitlistFilter = btn.dataset.weFilter;
+    renderWaitlist();
+  });
+});
+
+$('weExport').addEventListener('click', () => {
+  const filtered = waitlistFiltered();
+  if (filtered.length === 0) return;
+  const escape = (v) => {
+    const s = String(v || '');
+    return s.includes(',') || s.includes('"') || s.includes('\n') ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const header = 'Data,WhatsApp,Email,Origem,Tipo';
+  const lines = filtered.map(l =>
+    [escape(l.criadoEm), escape(l.whatsapp), escape(l.email), escape(weOrigemLabel(l.origem)),
+     Number(l.isTeste) === 1 ? 'Teste' : 'Real'].join(',')
+  );
+  const csv = [header, ...lines].join('\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'meli_lista_espera_esim.csv';
+  a.click();
+  URL.revokeObjectURL(url);
 });
 
 loadAll();
