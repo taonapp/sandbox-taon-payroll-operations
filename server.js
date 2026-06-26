@@ -336,6 +336,7 @@ apiRouter.get('/api/users/payers', async (req, res) => {
           u.id AS idUser,
           u.name,
           u.cpf,
+          (SELECT um.value FROM UsersMetadata um WHERE um.idUser = u.id AND um.name = 'razao_social_empresa' LIMIT 1) AS razaoSocialEmpresa,
           SUM(CASE WHEN bf.dentroCobranca = 1 THEN bf.valorProporcional ELSE 0 END) AS valorTotalFolha,
           SUM(bf.dentroCobranca) AS totalLinhas,
           COUNT(*) AS totalLinhasCobraveis
@@ -495,6 +496,7 @@ apiRouter.get('/api/users/payers/export', async (req, res) => {
       SELECT
           u.name,
           u.cpf,
+          (SELECT um.value FROM UsersMetadata um WHERE um.idUser = u.id AND um.name = 'razao_social_empresa' LIMIT 1) AS razaoSocialEmpresa,
           SUM(bf.valorProporcional) AS valorTotalFolha
       FROM base_final bf
       LEFT JOIN Users u ON u.id = bf.idUserPayer
@@ -502,21 +504,31 @@ apiRouter.get('/api/users/payers/export', async (req, res) => {
       ORDER BY u.name ASC
     `, opBinds);
 
+    // Coluna "Razão Social" (metadado ASTER) só entra no export do Aster
+    const isAster = op === OPERATIONS.aster;
+
     // Build XLSX matching the manual spreadsheet format
     const now = new Date();
     const monthNames = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
     const monthLabel = monthNames[now.getMonth()];
     const year = now.getFullYear();
 
+    const headerRow = isAster
+      ? [null, 'Nome', 'CPF', 'Razão Social', 'Valor a ser descontado']
+      : [null, 'Nome', 'CPF', 'Valor a ser descontado'];
+    const valueCol = isAster ? 4 : 3;
+
     const data = [
-      [null, null, null, null],
-      [null, null, null, null],
-      [null, 'Nome', 'CPF', 'Valor a ser descontado'],
+      headerRow.map(() => null),
+      headerRow.map(() => null),
+      headerRow,
     ];
 
     rows.forEach(r => {
       const valor = Number(r.valorTotalFolha) || 0;
-      data.push([null, r.name || '', r.cpf || '', valor]);
+      data.push(isAster
+        ? [null, r.name || '', r.cpf || '', r.razaoSocialEmpresa || '', valor]
+        : [null, r.name || '', r.cpf || '', valor]);
     });
 
     const ws = XLSX.utils.aoa_to_sheet(data);
@@ -524,17 +536,14 @@ apiRouter.get('/api/users/payers/export', async (req, res) => {
     // Format value column as number with 2 decimal places
     const range = XLSX.utils.decode_range(ws['!ref']);
     for (let r = 3; r <= range.e.r; r++) {
-      const cell = ws[XLSX.utils.encode_cell({ r, c: 3 })];
+      const cell = ws[XLSX.utils.encode_cell({ r, c: valueCol })];
       if (cell) { cell.t = 'n'; cell.z = '#,##0.00'; }
     }
 
     // Set column widths
-    ws['!cols'] = [
-      { wch: 2 },
-      { wch: 50 },
-      { wch: 16 },
-      { wch: 24 },
-    ];
+    ws['!cols'] = isAster
+      ? [{ wch: 2 }, { wch: 50 }, { wch: 16 }, { wch: 36 }, { wch: 24 }]
+      : [{ wch: 2 }, { wch: 50 }, { wch: 16 }, { wch: 24 }];
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Página1');
@@ -675,6 +684,7 @@ apiRouter.get('/api/users', async (req, res) => {
           fp.dateStart AS inicioPrimeiraAssinatura,
           rm.idCompany,
           c.companyName,
+          (SELECT um.value FROM UsersMetadata um WHERE um.idUser = b.idUser AND um.name = 'razao_social_empresa' LIMIT 1) AS razaoSocialEmpresa,
           mde.maxDateEnd,
           CASE
               WHEN fp.dateStart IS NULL THEN NULL

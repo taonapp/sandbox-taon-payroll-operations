@@ -33,6 +33,11 @@ async function loadPayers() {
   const totals = $('payersTotals');
   $('payersLabel').textContent = getPayersLabel();
 
+  // Coluna "Razao Social" (metadado da API ASTER) só faz sentido para o parceiro Aster
+  const showRazao = currentPartner === 'aster';
+  $('payersRazaoTh').classList.toggle('hidden', !showRazao);
+  const colCount = showRazao ? 7 : 6;
+
   try {
     const res = await fetch(`/payroll-ops/api/users/payers?view=${currentView}&op=${currentPartner}`);
     if (!res.ok) throw new Error('Erro na API');
@@ -55,6 +60,7 @@ async function loadPayers() {
         <td>${p.idUser || '-'}</td>
         <td>${p.name || '-'}</td>
         <td>${p.cpf || '-'}</td>
+        ${showRazao ? `<td>${p.razaoSocialEmpresa || '-'}</td>` : ''}
         <td>${formatCurrency(p.valorTotalFolha)}</td>
         <td>${linhas.toLocaleString('pt-BR')}</td>
         <td${diff ? ' style="color:var(--orange);font-weight:600"' : ''}>${cobraveis.toLocaleString('pt-BR')}</td>
@@ -71,7 +77,7 @@ async function loadPayers() {
 
     payersLoaded = true;
   } catch (err) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">Erro ao carregar dados</td></tr>';
+    tbody.innerHTML = `<tr><td colspan="${colCount}" style="text-align:center;color:var(--text-muted)">Erro ao carregar dados</td></tr>`;
     console.error(err);
   }
 }
@@ -184,6 +190,7 @@ function renderTable() {
       <td>${formatCurrency(u.valorProporcional)}</td>
       <td>${formatDate(u.maxDateEnd)}</td>
       <td>${u.companyName || '-'}</td>
+      <td>${u.razaoSocialEmpresa || '-'}</td>
       <td>${currentView === 'todos'
         ? `<span class="${u.statusSimCard === 'Sim' ? 'badge-sim' : u.statusSimCard === 'Inativo' ? 'badge-inativo' : 'badge-semchip'}">${u.statusSimCard || '-'}</span>`
         : (u.idSimCard || '-')}</td>
