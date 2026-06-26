@@ -2379,6 +2379,46 @@ apiRouter.get('/api/meli/pending-esim-contato', async (req, res) => {
   }
 });
 
+// Lista de espera eSIM (landing poc-meli-taon-esim) — leads no CRM, campanha 5
+apiRouter.get('/api/meli/waitlist', async (req, res) => {
+  try {
+    const [rows] = await pool.query(`
+      WITH waitlist AS (
+        SELECT r.id AS registerid, r.create_at
+        FROM crm.register r
+        WHERE r.campaignid = 5
+          AND EXISTS (
+            SELECT 1 FROM crm.campaign_lead_field s
+            WHERE s.registerid = r.id
+              AND s.type = 'leadSource'
+              AND s.value LIKE 'poc-meli%esim'
+          )
+      )
+      SELECT
+        w.registerid,
+        DATE_FORMAT(DATE_SUB(w.create_at, INTERVAL 3 HOUR), '%d/%m/%Y %H:%i') AS criadoEm,
+        MAX(CASE WHEN clf.type = 'leadSource' THEN clf.value END) AS origem,
+        MAX(CASE WHEN clf.type = 'whatsapp'   THEN clf.value END) AS whatsapp,
+        MAX(CASE WHEN clf.type = 'email'      THEN clf.value END) AS email,
+        MAX(CASE WHEN clf.type = 'test' AND clf.value = 'true' THEN 1 ELSE 0 END) AS isTeste,
+        CASE WHEN DATE(DATE_SUB(w.create_at, INTERVAL 3 HOUR))
+                  = DATE(DATE_SUB(NOW(), INTERVAL 3 HOUR)) THEN 1 ELSE 0 END AS isHoje,
+        CASE WHEN DATE_SUB(w.create_at, INTERVAL 3 HOUR)
+                  >= DATE_SUB(DATE_SUB(NOW(), INTERVAL 3 HOUR), INTERVAL 7 DAY) THEN 1 ELSE 0 END AS is7d,
+        CASE WHEN DATE_SUB(w.create_at, INTERVAL 3 HOUR)
+                  >= DATE_SUB(DATE_SUB(NOW(), INTERVAL 3 HOUR), INTERVAL 30 DAY) THEN 1 ELSE 0 END AS is30d
+      FROM waitlist w
+      JOIN crm.campaign_lead_field clf ON clf.registerid = w.registerid
+      GROUP BY w.registerid, w.create_at
+      ORDER BY w.create_at DESC
+    `);
+    res.json(rows);
+  } catch (err) {
+    console.error('Meli waitlist error:', err);
+    res.status(500).json({ error: 'Erro ao consultar lista de espera' });
+  }
+});
+
 // Consulta APN por lista de ICCIDs (POST)
 apiRouter.post('/api/apn-check', express.json({ limit: '1mb' }), async (req, res) => {
   try {

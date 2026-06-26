@@ -79,6 +79,7 @@
       <button class="tab-btn active" data-tab="ativacao">Ativacao</button>
       <button class="tab-btn" data-tab="movimentos">Movimentos</button>
       <button class="tab-btn" data-tab="estoque">Estoque de Chips</button>
+      <button class="tab-btn" data-tab="espera">Lista de Espera</button>
     </div>
 
     <div id="loading" class="loading">Carregando dados...</div>
@@ -590,6 +591,65 @@
           </section>
         </div>
       </div><!-- /tabEstoque -->
+
+      <!-- TAB LISTA DE ESPERA -->
+      <div id="tabEspera" class="tab-content hidden">
+        <p style="color:var(--text-muted);font-size:13px;margin:0 0 16px">
+          Aparelhos sem eSIM aguardando liberacao do chip fisico — inscritos pela landing eSIM Meli.
+        </p>
+
+        <section class="cards-row">
+          <div class="card accent-blue">
+            <span class="card-label">Total na lista</span>
+            <span class="card-value" id="weTotal">-</span>
+          </div>
+          <div class="card accent-green">
+            <span class="card-label">Novos hoje</span>
+            <span class="card-value" id="weHoje">-</span>
+          </div>
+          <div class="card accent-blue">
+            <span class="card-label">Ultimos 7 dias</span>
+            <span class="card-value" id="weSete">-</span>
+          </div>
+          <div class="card accent-blue">
+            <span class="card-label">Ultimos 30 dias</span>
+            <span class="card-value" id="weTrinta">-</span>
+          </div>
+        </section>
+
+        <section class="table-section">
+          <div class="card">
+            <div class="table-header">
+              <span class="card-label">Inscritos</span>
+              <div class="table-controls">
+                <input type="text" class="search-input" id="weSearch" placeholder="Buscar por WhatsApp ou e-mail...">
+                <div class="filter-group">
+                  <button class="filter-btn active" data-we-filter="real">Real</button>
+                  <button class="filter-btn" data-we-filter="teste">Teste</button>
+                  <button class="filter-btn" data-we-filter="all">Todos</button>
+                </div>
+                <button class="export-btn" id="weExport">Exportar CSV</button>
+                <span class="result-count" id="weResultCount"></span>
+              </div>
+            </div>
+            <div id="weLoading" style="text-align:center;color:var(--text-muted);padding:40px 0">Carregando...</div>
+            <div class="table-scroll">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Data e hora</th>
+                    <th>WhatsApp</th>
+                    <th>E-mail</th>
+                    <th>Origem</th>
+                    <th>Tipo</th>
+                  </tr>
+                </thead>
+                <tbody id="weTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </div><!-- /tabEspera -->
 
     </div>
   </main>
