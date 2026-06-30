@@ -3,3 +3,5 @@ node_modules/
 *.log
 scripts/out/
 .gstack/
+dev.sh
+dev.ps1

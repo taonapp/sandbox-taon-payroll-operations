@@ -29,6 +29,11 @@ const apiRouter = express.Router();
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(PREFIX, express.static(path.join(__dirname, 'public')));
 
+// Expose xlsx browser build for client-side XLSX parsing
+const XLSX_BROWSER_PATH = path.join(__dirname, 'node_modules/xlsx/dist/xlsx.full.min.js');
+app.get('/payroll-ops/lib/xlsx.min.js', (req, res) => res.sendFile(XLSX_BROWSER_PATH));
+app.get('/lib/xlsx.min.js', (req, res) => res.sendFile(XLSX_BROWSER_PATH));
+
 // Redirect prefix root to index
 app.get(PREFIX, (req, res) => res.redirect(`${PREFIX}/`));
 
@@ -772,6 +777,41 @@ const OPERATIONS = {
   meli: { codes: ['MELI26'], label: 'Meli' },
   hagana: { codes: ['HAGANADFGERAL', 'HAGANADF'], label: 'Haganá', payroll: true, cutoffDay: 20, originLike: 'HAGANA%' },
   aster: { codes: ['ASTERDF'], label: 'Aster', payroll: true, cutoffDay: 24, originLike: 'ASTER%' },
+};
+
+// Parceiros de desconto em folha — config para renovação de bases
+const PAYROLL_PARTNERS = {
+  hagana: {
+    label: 'Haganá',
+    cutoffDay: 20,
+    exportColumns: [
+      { key: 'name',  header: 'Nome' },
+      { key: 'cpf',   header: 'CPF' },
+      { key: 'valor', header: 'Valor a ser descontado' },
+    ],
+    communicationTag: 'renovacao_hagana',
+    communicationTemplates: {
+      renovando: 'Olá {nome}, sua mensalidade TaOn via folha da {empresa} foi renovada para {mes}.',
+      entrando:  'Olá {nome}, bem-vindo(a)! Sua adesão via folha da {empresa} está confirmada.',
+      saindo:    'Olá {nome}, seu plano TaOn via folha da {empresa} não foi renovado neste mês.',
+    },
+  },
+  aster: {
+    label: 'Aster',
+    cutoffDay: 24,
+    exportColumns: [
+      { key: 'name',        header: 'Nome' },
+      { key: 'cpf',         header: 'CPF' },
+      { key: 'razaoSocial', header: 'Razão Social' },
+      { key: 'valor',       header: 'Valor a ser descontado' },
+    ],
+    communicationTag: 'renovacao_aster',
+    communicationTemplates: {
+      renovando: 'Olá {nome}, sua mensalidade TaOn via folha da {empresa} ({razaoSocial}) foi renovada.',
+      entrando:  'Olá {nome}, bem-vindo(a) ao TaOn via folha da {empresa}.',
+      saindo:    'Olá {nome}, seu plano TaOn via folha da {empresa} não foi renovado neste mês.',
+    },
+  },
 };
 
 // Resolve/valida o parceiro payroll vindo do query param (default: hagana)
@@ -2591,6 +2631,167 @@ apiRouter.get('/api/nps-meli', async (req, res) => {
     }
   } catch (err) {
     console.error('NPS Meli error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ===== Renovação de Bases =====
+
+const CSV_CONFIG_FILE = path.join(__dirname, 'config', 'renovacao-csv-config.json');
+
+const DEFAULT_CSV_CONFIG = {
+  hagana: {
+    fileType: 'auto', delimiter: 'auto', encoding: 'utf-8', headerRow: 0, sheetIndex: 0,
+    columnMapping: { cpf: '', name: '' },
+  },
+  aster: {
+    fileType: 'auto', delimiter: 'auto', encoding: 'utf-8', headerRow: 0, sheetIndex: 0,
+    columnMapping: { cpf: '', name: '' },
+  },
+};
+
+apiRouter.get('/api/renovacao/csv-config', (req, res) => {
+  try {
+    if (!fs.existsSync(CSV_CONFIG_FILE)) return res.json(DEFAULT_CSV_CONFIG);
+    res.json(JSON.parse(fs.readFileSync(CSV_CONFIG_FILE, 'utf-8')));
+  } catch (err) {
+    res.json(DEFAULT_CSV_CONFIG);
+  }
+});
+
+apiRouter.post('/api/renovacao/csv-config', express.json(), (req, res) => {
+  try {
+    const dir = path.dirname(CSV_CONFIG_FILE);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(CSV_CONFIG_FILE, JSON.stringify(req.body, null, 2), 'utf-8');
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+function normalizeCpf(cpf) {
+  return String(cpf || '').replace(/\D/g, '').padStart(11, '0');
+}
+
+// Base atual de usuários de folha para um parceiro (linhas individuais por usuário)
+apiRouter.get('/api/renovacao/base', async (req, res) => {
+  try {
+    const partnerKey = req.query.partner || 'hagana';
+    const partner = PAYROLL_PARTNERS[partnerKey];
+    const op = OPERATIONS[partnerKey];
+    if (!partner || !op) return res.status(400).json({ error: 'Parceiro inválido' });
+
+    const { sql: opUsersSql, binds: opBinds } = opUsersCte(op);
+    const cutoffDay = String(partner.cutoffDay).padStart(2, '0');
+
+    const sql = `
+      WITH ${opUsersSql},
+      base_payroll AS (
+          SELECT DISTINCT rpc.idUser
+          FROM RecurringPurchasesConfig rpc
+          LEFT JOIN Users u ON u.id = rpc.idUser
+          LEFT JOIN Products p ON p.id = rpc.idProduct
+          WHERE rpc.paymentMethod = 'payroll'
+            AND rpc.idStatus = 1
+            AND u.status = 'enabled'
+            AND u.internalUser = 0
+            AND p.\`type\` = 'main'
+            AND rpc.idUser IN (SELECT idUser FROM op_users)
+            AND u.cdate < DATE_ADD(DATE_FORMAT(CURDATE(), '%Y-%m-${cutoffDay}'), INTERVAL 1 DAY)
+      ),
+      recurring_main AS (
+          SELECT * FROM (
+              SELECT
+                  rpc.idUser,
+                  rpc.idUserPayer,
+                  rpc.amount,
+                  ROW_NUMBER() OVER (PARTITION BY rpc.idUser ORDER BY rpc.cdate DESC) AS rn
+              FROM RecurringPurchasesConfig rpc
+              LEFT JOIN Products p ON p.id = rpc.idProduct
+              WHERE p.\`type\` LIKE 'main%'
+                AND rpc.idStatus = 1
+                AND rpc.paymentMethod = 'payroll'
+          ) x WHERE rn = 1
+      )
+      SELECT
+          b.idUser,
+          u.name,
+          u.cpf,
+          rm.idUserPayer,
+          up.name AS payerName,
+          rm.amount,
+          (SELECT um.value FROM UsersMetadata um
+           WHERE um.idUser = u.id AND um.name = 'razao_social_empresa' LIMIT 1) AS razaoSocialEmpresa
+      FROM base_payroll b
+      LEFT JOIN Users u ON u.id = b.idUser
+      LEFT JOIN recurring_main rm ON rm.idUser = b.idUser
+      LEFT JOIN Users up ON up.id = rm.idUserPayer
+      WHERE u.status = 'enabled' AND u.internalUser = 0
+      ORDER BY up.name, u.name
+    `;
+
+    const [rows] = await pool.query(sql, opBinds);
+    res.json(rows);
+  } catch (err) {
+    console.error('Renovacao base error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Gera XLSX de renovação a partir do diff enviado pelo cliente
+apiRouter.post('/api/renovacao/export', express.json({ limit: '2mb' }), async (req, res) => {
+  try {
+    const { partner: partnerKey, rows } = req.body;
+    if (!partnerKey || !Array.isArray(rows)) {
+      return res.status(400).json({ error: 'partner e rows são obrigatórios' });
+    }
+    const partner = PAYROLL_PARTNERS[partnerKey];
+    if (!partner) return res.status(400).json({ error: 'Parceiro inválido' });
+
+    const isAster = partnerKey === 'aster';
+    const now = new Date();
+    const monthNames = ['JAN','FEV','MAR','ABR','MAI','JUN','JUL','AGO','SET','OUT','NOV','DEZ'];
+    const filename = `Renovacao-TaOn_${monthNames[now.getMonth()]}-${now.getFullYear()}_${partnerKey}.xlsx`;
+
+    const headerRow = isAster
+      ? [null, 'Nome', 'CPF', 'Razão Social', 'Valor a ser descontado']
+      : [null, 'Nome', 'CPF', 'Valor a ser descontado'];
+    const valueCol = isAster ? 4 : 3;
+
+    const data = [
+      headerRow.map(() => null),
+      headerRow.map(() => null),
+      headerRow,
+    ];
+
+    rows.filter(r => r.status === 'renovando').forEach(r => {
+      const valor = Number(r.amount) || 0;
+      const nome = r.nameTaon || r.nameCsv || r.name || '';
+      data.push(isAster
+        ? [null, nome, normalizeCpf(r.cpf), r.razaoSocial || '', valor]
+        : [null, nome, normalizeCpf(r.cpf), valor]);
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    for (let row = 3; row <= range.e.r; row++) {
+      const cell = ws[XLSX.utils.encode_cell({ r: row, c: valueCol })];
+      if (cell) { cell.t = 'n'; cell.z = '#,##0.00'; }
+    }
+    ws['!cols'] = isAster
+      ? [{ wch: 2 }, { wch: 50 }, { wch: 16 }, { wch: 36 }, { wch: 24 }]
+      : [{ wch: 2 }, { wch: 50 }, { wch: 16 }, { wch: 24 }];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Página1');
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buf);
+  } catch (err) {
+    console.error('Renovacao export error:', err);
     res.status(500).json({ error: err.message });
   }
 });

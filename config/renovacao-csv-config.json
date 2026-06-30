@@ -1,0 +1,26 @@
+{
+  "hagana": {
+    "fileType": "auto",
+    "delimiter": "auto",
+    "encoding": "utf-8",
+    "headerRow": 0,
+    "sheetIndex": 0,
+    "columnMapping": {
+      "cpf": "31580123830",
+      "name": "ADEILSON FRANCISCO DA SILVA"
+    }
+  },
+  "aster": {
+    "fileType": "auto",
+    "delimiter": "auto",
+    "encoding": "utf-8",
+    "headerRow": 0,
+    "sheetIndex": 0,
+    "columnMapping": {
+      "cpf": "",
+      "name": "",
+      "valor": "",
+      "razaoSocial": null
+    }
+  }
+}

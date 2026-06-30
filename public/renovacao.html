@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Renovação de Bases - Payroll Ops</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="renovacao.css">
+  <script src="/payroll-ops/lib/xlsx.min.js"></script>
+</head>
+<body>
+  <div class="sidebar">
+    <div class="logo"><span class="logo-short">P</span><span class="logo-full">Payroll Ops</span></div>
+    <nav>
+      <a href="/payroll-ops/" class="nav-item">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        Dashboard
+      </a>
+      <a href="/payroll-ops/users.html" class="nav-item">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Base Ativa
+      </a>
+      <a href="/payroll-ops/activations.html" class="nav-item">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
+        Novas Ativações
+      </a>
+      <a href="/payroll-ops/partnerships.html" class="nav-item">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M12 22l4-4-4-4"/><path d="M12 14l-4-4 4-4"/><path d="M21 3l-7 7"/><path d="M3 3l7 7"/></svg>
+        Parcerias
+      </a>
+      <a href="/payroll-ops/meli.html" class="nav-item">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        Ativacao Meli
+      </a>
+      <a href="/payroll-ops/nps-meli.html" class="nav-item">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        Pesquisa NPS
+      </a>
+      <a href="/payroll-ops/renovacao.html" class="nav-item active">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+        Renovação
+      </a>
+    </nav>
+  </div>
+
+  <div class="mobile-nav">
+    <nav>
+      <a href="/payroll-ops/" class="mob-nav-item">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        <span>Dashboard</span>
+      </a>
+      <a href="/payroll-ops/users.html" class="mob-nav-item">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+        <span>Base Ativa</span>
+      </a>
+      <a href="/payroll-ops/activations.html" class="mob-nav-item">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
+        <span>Ativacoes</span>
+      </a>
+      <a href="/payroll-ops/partnerships.html" class="mob-nav-item">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M12 22l4-4-4-4"/><path d="M12 14l-4-4 4-4"/><path d="M21 3l-7 7"/><path d="M3 3l7 7"/></svg>
+        <span>Parcerias</span>
+      </a>
+      <a href="/payroll-ops/meli.html" class="mob-nav-item">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        <span>Meli</span>
+      </a>
+      <a href="/payroll-ops/nps-meli.html" class="mob-nav-item">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        <span>NPS Meli</span>
+      </a>
+      <a href="/payroll-ops/renovacao.html" class="mob-nav-item active">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+        <span>Renovação</span>
+      </a>
+    </nav>
+  </div>
+
+  <main class="content">
+    <header class="page-header">
+      <h1>Renovação de Bases</h1>
+      <div class="header-actions">
+        <div class="tab-bar" style="margin-bottom:0">
+          <button class="tab-btn active" data-view="renovacao">Renovação</button>
+          <button class="tab-btn" data-view="config">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+            Config CSV
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- ===== VIEW RENOVACAO ===== -->
+    <div id="viewRenovacao">
+      <div class="tab-bar" style="margin-bottom:16px">
+        <button class="tab-btn active" data-partner="hagana">Haganá</button>
+        <button class="tab-btn" data-partner="aster">Aster</button>
+      </div>
+
+      <div id="configWarning" class="rnv-config-warning" style="display:none">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        CSV ainda não configurado para este parceiro. <button class="rnv-link-btn" id="btnGoConfig">Configurar agora</button>
+      </div>
+
+      <div class="rnv-stepper">
+
+        <!-- Step 1 -->
+        <div class="rnv-step active" id="step1">
+          <div class="rnv-step-header">
+            <div class="rnv-step-number">1</div>
+            <div class="rnv-step-label">Submeter Planilha</div>
+          </div>
+          <div class="rnv-step-body">
+            <p class="rnv-step-desc">Faça upload da planilha de demitidos. Os CPFs dela serão marcados como <b>Saindo</b>; o restante da base Taon fica como <b>Ativo</b>.</p>
+            <div class="rnv-upload-zone" id="uploadZone">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom:8px;opacity:0.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              <div>Arraste a planilha de demitidos ou <b>clique para selecionar</b></div>
+              <div style="font-size:12px;margin-top:4px">Aceita CSV ou XLSX</div>
+              <input type="file" id="fileInput" accept=".csv,.xlsx,.txt" multiple style="display:none">
+            </div>
+            <div id="fileList" style="display:none" class="rnv-file-list"></div>
+            <div id="parseReport"></div>
+            <div class="rnv-step-actions">
+              <button class="rnv-btn rnv-btn-primary" id="btnCarregarBase" disabled>Carregar base e calcular diff</button>
+              <span class="rnv-loading" id="loadingBase" style="display:none">Carregando base Taon...</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 2 -->
+        <div class="rnv-step locked" id="step2">
+          <div class="rnv-step-header">
+            <div class="rnv-step-number">2</div>
+            <div class="rnv-step-label">Checar a Base</div>
+            <span class="rnv-step-badge" id="step2Badge" style="display:none"></span>
+          </div>
+          <div class="rnv-step-body">
+            <p class="rnv-step-desc">Revise as diferenças entre a base Taon e os arquivos do RH.</p>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px" id="diffSummaryCards"></div>
+            <div class="rnv-diff-filters" id="diffFilters">
+              <button class="tab-btn active" data-filter="todos">Todos</button>
+              <button class="tab-btn" data-filter="renovando">Ativos</button>
+              <button class="tab-btn" data-filter="saindo">Saindo</button>
+            </div>
+            <div style="overflow-x:auto">
+              <table class="data-table" id="diffTable">
+                <thead><tr id="diffTableHead"></tr></thead>
+                <tbody id="diffTableBody"></tbody>
+              </table>
+            </div>
+            <div class="rnv-step-actions">
+              <button class="rnv-btn rnv-btn-primary" id="btnConfirmDiff">Confirmar diff e avançar</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 3 -->
+        <div class="rnv-step locked" id="step3">
+          <div class="rnv-step-header">
+            <div class="rnv-step-number">3</div>
+            <div class="rnv-step-label">Confirmar Comunicação</div>
+          </div>
+          <div class="rnv-step-body">
+            <p class="rnv-step-desc">Confirme a tag e os templates de comunicação para cada grupo.</p>
+            <div id="commPreview"></div>
+            <div class="rnv-step-actions">
+              <button class="rnv-btn rnv-btn-primary" id="btnConfirmComm">Confirmar comunicação</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 4 -->
+        <div class="rnv-step locked" id="step4">
+          <div class="rnv-step-header">
+            <div class="rnv-step-number">4</div>
+            <div class="rnv-step-label">Processar Renovação</div>
+          </div>
+          <div class="rnv-step-body">
+            <p class="rnv-step-desc">Gere a planilha de cobrança (XLSX) com os usuários renovando.</p>
+            <div id="finalSummary"></div>
+            <div class="rnv-step-actions">
+              <button class="rnv-btn rnv-btn-primary btn-processar" id="btnProcessar">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Baixar planilha de renovação
+              </button>
+              <span class="rnv-loading" id="loadingExport" style="display:none">Gerando XLSX...</span>
+            </div>
+            <div id="doneBanner" style="display:none" class="rnv-done-banner">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+              Planilha exportada com sucesso.
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ===== VIEW CONFIG ===== -->
+    <div id="viewConfig" style="display:none">
+      <div class="tab-bar" style="margin-bottom:20px">
+        <button class="tab-btn active" data-config-partner="hagana">Haganá</button>
+        <button class="tab-btn" data-config-partner="aster">Aster</button>
+      </div>
+
+      <div id="configEditor" class="rnv-config-panel">
+
+        <!-- Configurações do arquivo -->
+        <div class="rnv-config-section">
+          <h3 class="rnv-config-section-title">Configurações da planilha de demitidos</h3>
+          <div class="rnv-config-grid">
+            <div class="rnv-config-field">
+              <label class="rnv-config-label">Tipo de arquivo</label>
+              <select class="rnv-config-select" id="cfgFileType">
+                <option value="auto">Auto-detectar (pela extensão)</option>
+                <option value="csv">CSV</option>
+                <option value="xlsx">Excel (XLSX)</option>
+              </select>
+            </div>
+            <div class="rnv-config-field" id="cfgDelimiterField">
+              <label class="rnv-config-label">Delimitador <span style="font-size:10px;color:var(--text-muted)">(só CSV)</span></label>
+              <select class="rnv-config-select" id="cfgDelimiter">
+                <option value="auto">Auto-detectar</option>
+                <option value=",">Vírgula ( , )</option>
+                <option value=";">Ponto-e-vírgula ( ; )</option>
+                <option value="\t">Tab</option>
+              </select>
+            </div>
+            <div class="rnv-config-field" id="cfgEncodingField">
+              <label class="rnv-config-label">Encoding <span style="font-size:10px;color:var(--text-muted)">(só CSV)</span></label>
+              <select class="rnv-config-select" id="cfgEncoding">
+                <option value="utf-8">UTF-8</option>
+                <option value="latin1">Latin-1 / ISO-8859-1</option>
+              </select>
+            </div>
+            <div class="rnv-config-field" id="cfgSheetField">
+              <label class="rnv-config-label">Aba do Excel <span style="font-size:10px;color:var(--text-muted)">(só XLSX)</span></label>
+              <select class="rnv-config-select" id="cfgSheet">
+                <option value="0">Primeira aba</option>
+              </select>
+              <span class="rnv-config-hint">Populada ao carregar um arquivo de amostra</span>
+            </div>
+            <div class="rnv-config-field">
+              <label class="rnv-config-label">Linha do header <span style="font-size:10px;color:var(--text-muted)">(0 = primeira linha)</span></label>
+              <input type="number" class="rnv-config-input" id="cfgHeaderRow" min="0" max="50" value="0">
+              <span class="rnv-config-hint">Ex: 2 = headers estão na 3ª linha da planilha</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Exploração de colunas -->
+        <div class="rnv-config-section">
+          <h3 class="rnv-config-section-title">Colunas da planilha de demitidos</h3>
+          <p class="rnv-step-desc">Carregue uma amostra para detectar as colunas, depois mapeie o campo CPF (obrigatório) e opcionalmente o nome.</p>
+
+          <div class="rnv-upload-zone rnv-upload-zone-sm" id="sampleUploadZone">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:0.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <span>Carregar amostra</span>
+            <input type="file" id="sampleCsvInput" accept=".csv,.xlsx,.txt" style="display:none">
+          </div>
+
+          <div id="detectedColumns" style="display:none">
+            <div class="rnv-columns-detected" id="columnChips"></div>
+
+            <div class="rnv-config-mapping">
+              <h4 class="rnv-config-mapping-title">Mapeamento de campos</h4>
+              <div class="rnv-config-grid">
+                <div class="rnv-config-field">
+                  <label class="rnv-config-label">CPF <span class="rnv-required">*</span></label>
+                  <select class="rnv-config-select" id="mapCpf"></select>
+                </div>
+                <div class="rnv-config-field">
+                  <label class="rnv-config-label">Nome (opcional)</label>
+                  <select class="rnv-config-select" id="mapName"></select>
+                </div>
+              </div>
+            </div>
+
+            <!-- Preview das primeiras linhas -->
+            <div class="rnv-config-section" style="margin-top:16px">
+              <h4 class="rnv-config-mapping-title">Preview (5 primeiras linhas)</h4>
+              <div style="overflow-x:auto">
+                <table class="data-table" id="previewTable">
+                  <thead><tr id="previewHead"></tr></thead>
+                  <tbody id="previewBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="rnv-step-actions">
+          <button class="rnv-btn rnv-btn-primary" id="btnSaveConfig">Salvar configuração</button>
+          <span class="rnv-loading" id="loadingSaveConfig" style="display:none">Salvando...</span>
+          <span id="saveConfigOk" style="display:none;color:var(--green);font-size:13px">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+            Configuração salva
+          </span>
+        </div>
+
+      </div>
+    </div>
+  </main>
+
+  <script src="renovacao.js"></script>
+</body>
+</html>
